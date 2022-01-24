@@ -209,12 +209,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 var testnetConfig = genesisConfig{
 	Genesis: defaultGenesisConfig(17242),
 	// who is able to deploy smart contract from genesis block
-	Deployers: []common.Address{
-		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
-		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
-		common.HexToAddress("0xEbCf9D06cf9333706E61213F17A795B2F7c55F1b"),
-		common.HexToAddress("0x57BA24bE2cF17400f37dB3566e839bfA6A2d018a"),
-	},
+	Deployers: []common.Address{},
 	// list of default validators
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
