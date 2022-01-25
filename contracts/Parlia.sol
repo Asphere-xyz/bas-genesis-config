@@ -5,12 +5,16 @@ import "./Injector.sol";
 
 contract Parlia is IParlia, InjectorContextHolderV1 {
 
+    uint256 public constant MISDEMEANOR_THRESHOLD = 50;
+    uint256 public constant FELONY_THRESHOLD = 150;
+
     event ValidatorAdded(address account);
     event ValidatorRemoved(address account);
 
     struct Validator {
         bool exists;
         address account;
+        uint32 slashes;
     }
 
     mapping(address => Validator) private _validatorsMap;
@@ -35,7 +39,8 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
         require(!_validatorsMap[account].exists, "Parlia: validator already exist");
         _validatorsMap[account] = Validator({
         exists : true,
-        account : account
+        account : account,
+        slashes: 0
         });
         _validators.push(account);
         emit ValidatorAdded(account);
@@ -43,6 +48,20 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
 
     function removeValidator(address account) public onlyFromGovernance override {
         require(_validatorsMap[account].exists, "Parlia: validator doesn't exist");
+        // find index of validator in validator set
+        int256 indexOf = - 1;
+        for (uint256 i = 0; i < _validators.length; i++) {
+            if (_validators[i] != account) continue;
+            indexOf = int256(i);
+            break;
+        }
+        require(indexOf >= 0, "Parlia: validator not found");
+        // remove validator from array
+        if (_validators.length > 1 && uint256(indexOf) != _validators.length - 1) {
+            _validators[uint256(indexOf)] = _validators[_validators.length - 1];
+        }
+        _validators.pop();
+        // remove from validators map
         delete _validatorsMap[account];
         emit ValidatorRemoved(account);
     }
@@ -63,8 +82,13 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
         require(validator.send(totalFee), "Parlia: transfer failed");
     }
 
-    function slash(address /*validator*/) external view onlyFromCoinbaseOrGovernance override {
-        revert("not implemented");
+    function slash(address validatorAddress) external onlyFromCoinbaseOrGovernance onlyZeroGasPrice onlyOncePerBlock override {
+        Validator memory validator = _validatorsMap[validatorAddress];
+        require(validator.exists, "Parlia: validator not found");
+        validator.slashes++;
+        if (validator.slashes % FELONY_THRESHOLD == 0) {
+        } else if (validator.slashes % MISDEMEANOR_THRESHOLD == 0) {
+        }
     }
 
     receive() external payable {

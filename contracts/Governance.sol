@@ -15,7 +15,7 @@ contract Governance is InjectorContextHolderV1, GovernorCountingSimple, Governor
     mapping(address => uint256) private _votingPower;
     uint256 private _votingSupply;
 
-    constructor(address owner, uint256 votingPeriod) Governor("Chiliz Governance") GovernorSettings(0, votingPeriod, 0) {
+    constructor(address owner, uint256 _votingPeriod) Governor("Chiliz Governance") GovernorSettings(0, _votingPeriod, 0) {
         _owner = owner;
     }
 

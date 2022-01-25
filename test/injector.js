@@ -34,7 +34,7 @@ contract("Injector", async (accounts) => {
       assert.equal(await deployer.getParlia(), '0x0000000000000000000000000000000000000030')
     }
     await testInjector(Deployer, [])
-    await testInjector(Governance, owner)
+    await testInjector(Governance, owner, '1')
     await testInjector(Parlia, [])
   })
 });

@@ -63,24 +63,14 @@ interface IInjector {
 
 abstract contract InjectorContextHolder is IInjector, IVersional {
 
-    bool private _init; // 0
+    bool private _init;
+    uint256 private _operatingBlock;
 
-    modifier whenNotInitialized() {
-        require(!_init, "OnlyInit: already initialized");
-        _;
-        _init = true;
-    }
+    IDeployer private _deployer;
+    IGovernance private _governance;
+    IParlia private _parlia;
 
-    modifier whenInitialized() {
-        require(_init, "OnlyInit: not initialized yet");
-        _;
-    }
-
-    IDeployer private _deployer; // 1
-    IGovernance private _governance; // 2
-    IParlia private _parlia; // 3
-
-    uint256[50-4] private _gap;
+    uint256[50 - 4] private _gap;
 
     function init() public whenNotInitialized virtual {
         _deployer = IDeployer(0x0000000000000000000000000000000000000010);
@@ -102,6 +92,28 @@ abstract contract InjectorContextHolder is IInjector, IVersional {
     modifier onlyFromGovernance() {
         require(IGovernance(msg.sender) == getGovernance(), "InjectorContextHolder: only governance");
         _;
+    }
+
+    modifier onlyZeroGasPrice() {
+        require(tx.gasprice == 0, "InjectorContextHolder: only zero gas price");
+        _;
+    }
+
+    modifier whenNotInitialized() {
+        require(!_init, "OnlyInit: already initialized");
+        _;
+        _init = true;
+    }
+
+    modifier whenInitialized() {
+        require(_init, "OnlyInit: not initialized yet");
+        _;
+    }
+
+    modifier onlyOncePerBlock() {
+        require(block.number > _operatingBlock, "InjectorContextHolder: only once per block");
+        _;
+        _operatingBlock = block.number;
     }
 
     function getDeployer() public view whenInitialized override returns (IDeployer) {
