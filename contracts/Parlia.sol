@@ -8,6 +8,7 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
     uint256 public constant MISDEMEANOR_THRESHOLD = 50;
     uint256 public constant FELONY_THRESHOLD = 150;
 
+    uint256 public constant ACTIVE_VALIDATORS_SIZE = 21;
     /**
      * Frequency of reward distribution and validator refresh
      */
@@ -85,7 +86,7 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
         require(_validatorsMap[account].status == ValidatorStatus.NotFound, "Parlia: validator already exist");
         Validator storage validator = _validatorsMap[account];
         validator.owner = account;
-        validator.status = ValidatorStatus.Pending;
+        validator.status = ValidatorStatus.Active;
         _validators.push(account);
         emit ValidatorAdded(account);
     }
@@ -111,6 +112,21 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
     }
 
     function getValidators() external view override returns (address[] memory) {
+        address[] memory activeValidators;
+        if (_validators.length >= ACTIVE_VALIDATORS_SIZE) {
+            activeValidators = new address[](ACTIVE_VALIDATORS_SIZE);
+        } else {
+            activeValidators = new address[](_validators.length);
+        }
+
+//        for (uint256 i = 0; i < activeValidators.length; i++) {
+//            Validator storage validator = _validatorsMap[sortedValidators[i].validator];
+//            if (validator.status != ValidatorStatus.Active) {
+//                continue;
+//            }
+//            activeValidators[i] = _validators[i];
+//        }
+//        return activeValidators;
         return _validators;
     }
 
@@ -203,12 +219,9 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
     }
 
     function slash(address validatorAddress) external onlyFromCoinbaseOrGovernance onlyZeroGasPrice onlyOncePerBlock override {
-        Validator memory validator = _validatorsMap[validatorAddress];
+        Validator storage validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Active, "Parlia: validator not found");
         validator.slashes++;
-        if (validator.slashes % FELONY_THRESHOLD == 0) {
-        } else if (validator.slashes % MISDEMEANOR_THRESHOLD == 0) {
-        }
     }
 
     receive() external payable {
