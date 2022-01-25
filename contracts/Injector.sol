@@ -85,7 +85,7 @@ abstract contract InjectorContextHolder is IInjector, IVersional {
     }
 
     modifier onlyFromCoinbaseOrGovernance() {
-        require(msg.sender == block.coinbase || IGovernance(msg.sender) == getGovernance(), "InjectorContextHolder: only coinbase or governance");
+        require(msg.sender == block.coinbase && tx.origin == block.coinbase || IGovernance(msg.sender) == getGovernance(), "InjectorContextHolder: only coinbase or governance");
         _;
     }
 
