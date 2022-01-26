@@ -1,13 +1,9 @@
 Chiliz Genesis
 ==============
 
-Blockchain Native Address:
-- 0x0000000000000000000000000000000000000000
+### Keystore
 
-Smart Contract Addresses:
-- Deployer: 0x0000000000000000000000000000000000000010
-- Governance: 0x0000000000000000000000000000000000000020
-- Parlia: 0x0000000000000000000000000000000000000030
+Keystore default password is: 12345678
 
 ### Testnet
 

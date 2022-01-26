@@ -83,10 +83,6 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		Balance: big.NewInt(0),
 		Nonce:   0,
 	}
-	fmt.Printf("Affected storage for contract: %s\n", systemContract.Hex())
-	for key, value := range storage {
-		fmt.Printf(" ~ %s -> %s\n", key.Hex(), value.Hex())
-	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
 	}
@@ -206,8 +202,8 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 	}
 }
 
-var testnetConfig = genesisConfig{
-	Genesis: defaultGenesisConfig(17242),
+var devnetConfig = genesisConfig{
+	Genesis: defaultGenesisConfig(1337),
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{},
 	// list of default validators
@@ -219,8 +215,28 @@ var testnetConfig = genesisConfig{
 	VotingPeriod:    60, // 3 minutes
 	// faucet
 	Faucet: map[common.Address]string{
-		common.HexToAddress("0x86d274133714A88CE821F279e5eD3fb0BfB42503"): "0x21e19e0c9bab2400000",
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",
+	},
+}
+
+var testnetConfig = genesisConfig{
+	Genesis: defaultGenesisConfig(17242),
+	// who is able to deploy smart contract from genesis block (it won't generate event log)
+	Deployers: []common.Address{},
+	// list of default validators (it won't generate event log)
+	Validators: []common.Address{
+		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
+		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"),
+		common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"),
+	},
+	// owner of the governance
+	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
+	VotingPeriod:    60, // 3 minutes
+	// faucet
+	Faucet: map[common.Address]string{
+		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",
+		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"): "0x21e19e0c9bab2400000",
+		common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"): "0x21e19e0c9bab2400000",
 		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"): "0x21e19e0c9bab2400000",
 		common.HexToAddress("0x57BA24bE2cF17400f37dB3566e839bfA6A2d018a"): "0x21e19e0c9bab2400000",
 		common.HexToAddress("0xEbCf9D06cf9333706E61213F17A795B2F7c55F1b"): "0x21e19e0c9bab2400000",
@@ -228,6 +244,9 @@ var testnetConfig = genesisConfig{
 }
 
 func main() {
+	if err := createGenesisConfig(devnetConfig, "devnet.json"); err != nil {
+		panic(err)
+	}
 	if err := createGenesisConfig(testnetConfig, "testnet.json"); err != nil {
 		panic(err)
 	}
