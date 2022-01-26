@@ -183,7 +183,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 		BrunoBlock:          big.NewInt(0),
 		Parlia: &params.ParliaConfig{
 			Period: 3,
-			Epoch:  200,
+			Epoch:  100,
 		},
 	}
 	return &core.Genesis{
@@ -203,7 +203,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 }
 
 var devnetConfig = genesisConfig{
-	Genesis: defaultGenesisConfig(1337),
+	Genesis: defaultGenesisConfig(17242),
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{},
 	// list of default validators
@@ -226,8 +226,8 @@ var testnetConfig = genesisConfig{
 	// list of default validators (it won't generate event log)
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
-		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"),
-		common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"),
+		//common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"),
+		//common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"),
 	},
 	// owner of the governance
 	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),

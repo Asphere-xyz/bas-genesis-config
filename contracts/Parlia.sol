@@ -112,13 +112,12 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
     }
 
     function getValidators() external view override returns (address[] memory) {
-        address[] memory activeValidators;
-        if (_validators.length >= ACTIVE_VALIDATORS_SIZE) {
-            activeValidators = new address[](ACTIVE_VALIDATORS_SIZE);
-        } else {
-            activeValidators = new address[](_validators.length);
-        }
-
+//        address[] memory activeValidators;
+//        if (_validators.length >= ACTIVE_VALIDATORS_SIZE) {
+//            activeValidators = new address[](ACTIVE_VALIDATORS_SIZE);
+//        } else {
+//            activeValidators = new address[](_validators.length);
+//        }
 //        for (uint256 i = 0; i < activeValidators.length; i++) {
 //            Validator storage validator = _validatorsMap[sortedValidators[i].validator];
 //            if (validator.status != ValidatorStatus.Active) {
@@ -131,19 +130,19 @@ contract Parlia is IParlia, InjectorContextHolderV1 {
     }
 
     function deposit(address validatorAddress) public payable onlyFromCoinbaseOrGovernance onlyZeroGasPrice override {
-        require(msg.value > 0, "Parlia: deposit is zero");
-        // make sure validator is active
-        Validator storage validator = _validatorsMap[validatorAddress];
-        require(validator.status == ValidatorStatus.Active, "Parlia: validator not active");
-        validator.pending += msg.value;
-        // commit pending validator rewards once per hour
-        if (block.number >= _recentPayoutCommit + COMMIT_INCOMING_BLOCK_INTERVAL) {
-            _slashValidatorsAndDistributeRewards();
-        }
-        // distribute committed rewards between delegators
-        if (block.number >= _recentRewardDistribution + DISTRIBUTE_DELEGATION_REWARDS_BLOCK_INTERVAL) {
-            _distributeValidatorRewards(validator);
-        }
+//        require(msg.value > 0, "Parlia: deposit is zero");
+//        // make sure validator is active
+//        Validator storage validator = _validatorsMap[validatorAddress];
+//        require(validator.status == ValidatorStatus.Active, "Parlia: validator not active");
+//        validator.pending += msg.value;
+//        // commit pending validator rewards once per hour
+//        if (block.number >= _recentPayoutCommit + COMMIT_INCOMING_BLOCK_INTERVAL) {
+//            _slashValidatorsAndDistributeRewards();
+//        }
+//        // distribute committed rewards between delegators
+//        if (block.number >= _recentRewardDistribution + DISTRIBUTE_DELEGATION_REWARDS_BLOCK_INTERVAL) {
+//            _distributeValidatorRewards(validator);
+//        }
     }
 
     function _slashValidatorsAndDistributeRewards() internal {
