@@ -45,6 +45,26 @@ interface IParlia {
     function claimDepositFee(address payable validator) external;
 
     function slash(address validator) external;
+
+    function getSystemFee() external view returns (uint256);
+}
+
+interface IStaking {
+
+    function getValidatorDelegation(address validator, address delegator) external view returns (
+        uint256 delegatedAmount,
+        uint64 unstakeBlockedBefore,
+        uint256 pendingUndelegate
+    );
+
+    function getValidatorDelegations(address validator) external view returns (
+        uint8 status,
+        uint256 delegated
+    );
+
+    function delegate(address validator) payable external;
+
+    function undelegate(address validator, uint256 amount) payable external;
 }
 
 interface IVersional {
@@ -82,6 +102,11 @@ abstract contract InjectorContextHolder is IInjector, IVersional {
         _deployer = deployer;
         _governance = governance;
         _parlia = parlia;
+    }
+
+    modifier onlyFromCoinbase() {
+        require(msg.sender == block.coinbase && tx.origin == block.coinbase, "InjectorContextHolder: only coinbase or governance");
+        _;
     }
 
     modifier onlyFromCoinbaseOrGovernance() {

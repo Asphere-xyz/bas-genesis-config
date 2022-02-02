@@ -11,7 +11,6 @@ const createAndExecuteInstantProposal = async (
   // sender
   sender,
 ) => {
-  console.log(`Creating proposal: ${desc}`)
   const currentOwner = await governance.getOwner()
   if (currentOwner === '0x0000000000000000000000000000000000000000') await governance.obtainOwnership();
   const votingPower = await governance.getVotingPower(sender)
