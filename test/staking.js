@@ -12,10 +12,9 @@ const FakeStaking = artifacts.require("FakeStaking");
 
 contract("Staking", async (accounts) => {
   const [staker1, staker2, staker3, validator1, validator2, validator3, validator4, validator5] = accounts
-  it("simple delegation should work", async () => {
+  it("simple delegation", async () => {
     const parlia = await FakeStaking.new();
     await parlia.addValidator(validator1);
-    // staker 1
     const res = await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0
     assert.equal(res.logs[0].args.validator, validator1);
     assert.equal(res.logs[0].args.from, staker1);

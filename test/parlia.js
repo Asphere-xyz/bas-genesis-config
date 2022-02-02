@@ -23,7 +23,7 @@ contract("Parlia", async (accounts) => {
   }
   const newMockContract = async () => {
     const governance = await Governance.new(owner, 1),
-      parlia = await FakeStaking.new([]);
+      parlia = await FakeStaking.new();
     governance.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
     parlia.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
     return [parlia, governance]
