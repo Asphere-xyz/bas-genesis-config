@@ -123,7 +123,11 @@ type genesisConfig struct {
 func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis := config.Genesis
 	// extra data
-	genesis.ExtraData = createExtraData(config.Validators)
+	if len(config.Validators) >= 3 {
+		genesis.ExtraData = createExtraData(config.Validators[0:3])
+	} else {
+		genesis.ExtraData = createExtraData(config.Validators)
+	}
 	// execute system contracts
 	ctor, err := newArguments("address[]").Pack(config.Deployers)
 	if err != nil {
@@ -212,7 +216,7 @@ var devnetConfig = genesisConfig{
 	},
 	// owner of the governance
 	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
-	VotingPeriod:    60, // 3 minutes
+	VotingPeriod:    20, // 3 minutes
 	// faucet
 	Faucet: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",
@@ -225,9 +229,11 @@ var testnetConfig = genesisConfig{
 	Deployers: []common.Address{},
 	// list of default validators (it won't generate event log)
 	Validators: []common.Address{
-		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
-		//common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"),
-		//common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"),
+		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"),
+		common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"),
+		common.HexToAddress("0xa6ff33e3250cc765052ac9d7f7dfebda183c4b9b"),
+		//common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
+		//common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
 	},
 	// owner of the governance
 	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
@@ -235,8 +241,6 @@ var testnetConfig = genesisConfig{
 	// faucet
 	Faucet: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",
-		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"): "0x21e19e0c9bab2400000",
-		common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"): "0x21e19e0c9bab2400000",
 		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"): "0x21e19e0c9bab2400000",
 		common.HexToAddress("0x57BA24bE2cF17400f37dB3566e839bfA6A2d018a"): "0x21e19e0c9bab2400000",
 		common.HexToAddress("0xEbCf9D06cf9333706E61213F17A795B2F7c55F1b"): "0x21e19e0c9bab2400000",
