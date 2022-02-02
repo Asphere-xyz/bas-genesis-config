@@ -8,7 +8,7 @@ abstract contract Staking is IParlia, IStaking {
     uint256 public constant MISDEMEANOR_THRESHOLD = 50;
     uint256 public constant FELONY_THRESHOLD = 150;
 
-    uint256 public constant ACTIVE_VALIDATORS_SIZE = 22;
+    uint32 public constant DEFAULT_ACTIVE_VALIDATORS_SIZE = 22;
     /**
      * Frequency of reward distribution and validator refresh
      */
@@ -66,11 +66,12 @@ abstract contract Staking is IParlia, IStaking {
         uint256 totalDelegated;
     }
 
-    mapping(address => Validator) private _validatorsMap;
-    address[] private _validators;
-    uint64 private _recentRewardDistribution;
-    uint64 private _recentSlashAndRewardDistribution;
-    uint256 private _systemFee;
+    uint32 internal _consensusLimit;
+    mapping(address => Validator) internal _validatorsMap;
+    address[] internal _validators;
+    uint64 internal _recentRewardDistribution;
+    uint64 internal _recentSlashAndRewardDistribution;
+    uint256 internal _systemFee;
 
     function delegate(address validatorAddress) payable external override {
         _delegateTo(msg.sender, validatorAddress, msg.value);
@@ -82,11 +83,12 @@ abstract contract Staking is IParlia, IStaking {
         require(validator.status == ValidatorStatus.Alive, "Staking: validator is not active");
         uint256 delegatorOffset = validator.delegatorsMap[fromAddress];
         if (delegatorOffset == 0) {
-            delegatorOffset = validator.delegations.length;
-            validator.delegations.push(Delegation({delegatedAmount : 0, unstakeBlockedBefore : 0, pendingUndelegate : 0}));
-            validator.delegatorsMap[fromAddress] = delegatorOffset;
+            validator.delegations.push(Delegation({delegatedAmount : amount, unstakeBlockedBefore : 0, pendingUndelegate : 0}));
+            validator.delegatorsMap[fromAddress] = validator.delegations.length - 1;
+        } else {
+            validator.delegations[delegatorOffset].delegatedAmount += amount;
         }
-        validator.delegations[delegatorOffset].delegatedAmount += amount;
+        validator.totalDelegated += amount;
         emit Delegated(toValidator, fromAddress, amount);
     }
 
@@ -96,7 +98,7 @@ abstract contract Staking is IParlia, IStaking {
         uint256 pendingUndelegate
     ) {
         Validator storage validator = _validatorsMap[validatorAddress];
-        uint256 delegatorOffset = validator.delegatorsMap[validatorAddress];
+        uint256 delegatorOffset = validator.delegatorsMap[delegator];
         if (delegatorOffset > 0 && delegatorOffset < validator.delegations.length) {
             delegatedAmount = validator.delegations[delegatorOffset].delegatedAmount;
             unstakeBlockedBefore = validator.delegations[delegatorOffset].unstakeBlockedBefore;
@@ -160,9 +162,13 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     function getValidators() external view override returns (address[] memory) {
+        uint64 activeValidatorsLimit = _consensusLimit;
+        if (activeValidatorsLimit == 0) {
+            activeValidatorsLimit = DEFAULT_ACTIVE_VALIDATORS_SIZE;
+        }
         address[] memory activeValidators;
-        if (_validators.length >= ACTIVE_VALIDATORS_SIZE) {
-            activeValidators = new address[](ACTIVE_VALIDATORS_SIZE);
+        if (_validators.length >= activeValidatorsLimit) {
+            activeValidators = new address[](activeValidatorsLimit);
         } else {
             activeValidators = new address[](_validators.length);
         }
@@ -175,7 +181,7 @@ abstract contract Staking is IParlia, IStaking {
             Validator storage left = _validatorsMap[orderedValidators[i]];
             for (uint256 j = i + 1; j < orderedValidators.length; j++) {
                 Validator storage right = _validatorsMap[orderedValidators[j]];
-                if (left.totalDelegated < right.totalDelegated) {
+                if (left.totalDelegated > right.totalDelegated) {
                     continue;
                 }
                 (orderedValidators[i], orderedValidators[j]) = (orderedValidators[j], orderedValidators[i]);

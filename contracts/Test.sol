@@ -5,6 +5,10 @@ import "./Staking.sol";
 
 contract FakeStaking is Staking, InjectorContextHolderV1 {
 
+    constructor() {
+        _consensusLimit = 3;
+    }
+
     function addValidator(address account) external override {
         _addValidator(account, account);
     }
