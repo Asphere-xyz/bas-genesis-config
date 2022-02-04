@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "compile": "truffle compile --all",
-    "test": "truffle test"
+    "test": "truffle test",
+    "coverage": "truffle run coverage"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +14,7 @@
   "devDependencies": {
     "@openzeppelin/contracts": "^4.4.2",
     "@truffle/hdwallet-provider": "^1.2.6",
+    "solidity-coverage": "^0.7.18",
     "truffle": "^5.3.1"
   },
   "dependencies": {

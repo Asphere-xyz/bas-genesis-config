@@ -119,7 +119,7 @@ abstract contract Staking is IParlia, IStaking {
         delegated = validator.totalDelegated;
     }
 
-    function undelegate(address validatorAddress, uint256 amount) payable external override {
+    function undelegate(address /*validatorAddress*/, uint256 /*amount*/) payable external override {
         revert("not supported");
     }
 

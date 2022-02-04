@@ -5,14 +5,12 @@
 /** @function before */
 /** @var assert */
 
-const Deployer = artifacts.require("Deployer");
-const Governance = artifacts.require("Governance");
-const Parlia = artifacts.require("Parlia");
+const {newMockContract, newGovernanceContract} = require("./helper");
 
 contract("Governance", async (accounts) => {
   const [owner, voter] = accounts
   it("voting power is managed by owner", async () => {
-    const governance = await Governance.deployed();
+    const {governance} = await newMockContract(owner);
     const r1 = await governance.setVotingPower(owner, '1000')
     assert.equal(r1.logs[0].event, 'VotingPowerSet')
     assert.equal(r1.logs[0].args.voter, owner)
@@ -35,8 +33,8 @@ contract("Governance", async (accounts) => {
     assert.equal(quorum.toString(), '1000')
   });
   it("simple proposal should work", async () => {
-    const governance = await Governance.deployed(),
-      deployer = await Deployer.deployed();
+    const {governance, deployer} = await newMockContract(owner);
+    await governance.setVotingPower(owner, '1000')
     const r1 = await governance.propose(
       [deployer.address],
       ['0x00'],

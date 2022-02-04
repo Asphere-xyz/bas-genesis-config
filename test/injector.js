@@ -3,6 +3,7 @@
 /** @function contract */
 /** @function it */
 /** @function before */
+const {newMockContract} = require("./helper");
 /** @var assert */
 
 const Deployer = artifacts.require("Deployer");
@@ -12,9 +13,7 @@ const Parlia = artifacts.require("Parlia");
 contract("Injector", async (accounts) => {
   const [owner] = accounts
   it("migration is working fine", async () => {
-    const deployer = await Deployer.deployed();
-    const governance = await Governance.deployed();
-    const parlia = await Parlia.deployed();
+    const {governance, deployer, parlia} = await newMockContract(owner);
     assert.equal(deployer.address, await deployer.getDeployer());
     assert.equal(deployer.address, await governance.getDeployer());
     assert.equal(deployer.address, await parlia.getDeployer());

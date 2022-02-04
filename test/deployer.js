@@ -5,17 +5,12 @@
 /** @function before */
 /** @var assert */
 
-const Deployer = artifacts.require("Deployer");
-const Governance = artifacts.require("Governance");
-const Parlia = artifacts.require("Parlia");
-
-const {addDeployer, removeDeployer, registerDeployedContract} = require('./helper')
+const {newMockContract, addDeployer, removeDeployer, registerDeployedContract} = require('./helper')
 
 contract("Deployer", async (accounts) => {
   const [owner] = accounts;
   it("add remove deployer", async () => {
-    const governance = await Governance.deployed(),
-      deployer = await Deployer.deployed();
+    const {governance, deployer} = await newMockContract(owner);
     assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), false)
     // add deployer
     const r1 = await addDeployer(governance, deployer, '0x0000000000000000000000000000000000000001', owner)
@@ -29,8 +24,7 @@ contract("Deployer", async (accounts) => {
     assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), false)
   });
   it("contract deployment is not possible w/o whitelist", async () => {
-    const governance = await Governance.deployed(),
-      deployer = await Deployer.deployed();
+    const {governance, deployer} = await newMockContract(owner);
     try {
       await registerDeployedContract(governance, deployer, owner, '0x0000000000000000000000000000000000000123', owner);
       assert.fail()

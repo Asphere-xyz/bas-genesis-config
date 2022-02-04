@@ -1,5 +1,30 @@
 /** @var web3 {Web3} */
 
+const Deployer = artifacts.require("Deployer");
+const Governance = artifacts.require("Governance");
+const Parlia = artifacts.require("Parlia");
+const FakeStaking = artifacts.require("FakeStaking");
+
+const newGovernanceContract = async (owner) => {
+  const deployer = await Deployer.new([]);
+  const governance = await Governance.new(owner, 1);
+  const parlia = await Parlia.new([]);
+  await deployer.initManually(deployer.address, governance.address, parlia.address);
+  await governance.initManually(deployer.address, governance.address, parlia.address);
+  await parlia.initManually(deployer.address, governance.address, parlia.address);
+  return {deployer, governance, parlia}
+}
+
+const newMockContract = async (owner) => {
+  const deployer = await Deployer.new([]);
+  const governance = await Governance.new(owner, 1);
+  const parlia = await FakeStaking.new();
+  await deployer.initManually(deployer.address, governance.address, parlia.address);
+  await governance.initManually(deployer.address, governance.address, parlia.address);
+  await parlia.initManually(deployer.address, governance.address, parlia.address);
+  return {deployer, governance, parlia}
+}
+
 const createAndExecuteInstantProposal = async (
   // contracts
   governance,
@@ -31,7 +56,7 @@ const addValidator = async (governance, parlia, user, sender) => {
 
 const removeValidator = async (governance, parlia, user, sender) => {
   const abi = parlia.contract.methods.removeValidator(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [parlia.address], ['0x00'], [abi], `Add ${user} validator (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(governance, [parlia.address], ['0x00'], [abi], `Remove ${user} validator (${randomProposalDesc()})`, sender)
 }
 
 const addDeployer = async (governance, deployer, user, sender) => {
@@ -41,7 +66,7 @@ const addDeployer = async (governance, deployer, user, sender) => {
 
 const removeDeployer = async (governance, deployer, user, sender) => {
   const abi = deployer.contract.methods.removeDeployer(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Add ${user} deployer (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Remove ${user} deployer (${randomProposalDesc()})`, sender)
 }
 
 const registerDeployedContract = async (governance, deployer, owner, contract, sender) => {
@@ -50,10 +75,12 @@ const registerDeployedContract = async (governance, deployer, owner, contract, s
 }
 
 module.exports = {
+  newGovernanceContract,
+  newMockContract,
   addValidator,
   removeValidator,
   addDeployer,
   removeDeployer,
   registerDeployedContract,
-  createAndExecuteInstantProposal
+  createAndExecuteInstantProposal,
 }

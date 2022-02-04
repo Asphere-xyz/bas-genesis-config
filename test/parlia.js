@@ -5,31 +5,12 @@
 /** @function before */
 /** @var assert */
 
-const Deployer = artifacts.require("Deployer");
-const Governance = artifacts.require("Governance");
-const Parlia = artifacts.require("Parlia");
-const FakeStaking = artifacts.require("FakeStaking");
-
-const {addValidator, removeValidator} = require('./helper')
+const {newGovernanceContract, addValidator, removeValidator, newMockContract} = require('./helper')
 
 contract("Parlia", async (accounts) => {
   const [owner] = accounts
-  const newGovernanceContract = async () => {
-    const governance = await Governance.new(owner, 1),
-      parlia = await Parlia.new([]);
-    governance.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
-    parlia.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
-    return [parlia, governance]
-  }
-  const newMockContract = async () => {
-    const governance = await Governance.new(owner, 1),
-      parlia = await FakeStaking.new();
-    governance.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
-    parlia.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
-    return [parlia, governance]
-  }
   it("add remove validator", async () => {
-    const [parlia, governance] = await newGovernanceContract()
+    const {governance, parlia} = await newGovernanceContract(owner);
     assert.equal(await parlia.isValidator('0x00A601f45688DbA8a070722073B015277cF36725'), false)
     const {receipt: {rawLogs: rawLogs1}} = await addValidator(governance, parlia, '0x00A601f45688DbA8a070722073B015277cF36725', owner),
       [, log1] = rawLogs1
@@ -47,7 +28,7 @@ contract("Parlia", async (accounts) => {
     assert.deepEqual(validators2, [])
   });
   it("remove first added validator", async () => {
-    const [parlia, governance] = await newGovernanceContract()
+    const {parlia, governance} = await newGovernanceContract(owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000001', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000002', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000003', owner)
@@ -63,10 +44,7 @@ contract("Parlia", async (accounts) => {
     ])
   })
   it("remove some validator from the list", async () => {
-    const governance = await Governance.new(owner, 1),
-      parlia = await Parlia.new([]);
-    governance.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
-    parlia.initManually('0x0000000000000000000000000000000000000000', governance.address, parlia.address);
+    const {parlia, governance} = await newGovernanceContract(owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000001', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000002', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000003', owner)
@@ -82,7 +60,7 @@ contract("Parlia", async (accounts) => {
     ])
   })
   it("remove last validator from the list", async () => {
-    const [parlia, governance] = await newGovernanceContract()
+    const {parlia, governance} = await newGovernanceContract(owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000001', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000002', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000003', owner)
@@ -98,7 +76,7 @@ contract("Parlia", async (accounts) => {
     ])
   })
   it("system fee is well calculated", async () => {
-    const [parlia, governance] = await newMockContract()
+    const {parlia} = await newMockContract(owner)
     await web3.eth.sendTransaction({from: owner, to: parlia.address, value: '1000000000000000000'}); // 1 ether
     let systemFee = await parlia.getSystemFee()
     assert.equal(systemFee.toString(), '1000000000000000000')
