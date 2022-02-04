@@ -209,17 +209,19 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 var devnetConfig = genesisConfig{
 	Genesis: defaultGenesisConfig(17242),
 	// who is able to deploy smart contract from genesis block
-	Deployers: []common.Address{},
+	Deployers: []common.Address{
+		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
+	},
 	// list of default validators
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
 	},
 	// owner of the governance
-	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
-	VotingPeriod:    20, // 3 minutes
+	GovernanceOwner: common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
+	VotingPeriod:    20, // 1 minute
 	// faucet
 	Faucet: map[common.Address]string{
-		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",
+		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"): "0x21e19e0c9bab2400000",
 	},
 }
 

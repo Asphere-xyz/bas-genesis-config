@@ -32,6 +32,8 @@ interface IGovernance {
 
 interface IParlia {
 
+    function isValidatorAlive(address account) external view returns (bool);
+
     function isValidator(address account) external view returns (bool);
 
     function addValidator(address account) external;
@@ -42,7 +44,7 @@ interface IParlia {
 
     function deposit(address validator) external payable;
 
-    function claimDepositFee(address payable validator) external;
+    function claimDepositFee(address validator) external;
 
     function slash(address validator) external;
 
@@ -53,13 +55,12 @@ interface IStaking {
 
     function getValidatorDelegation(address validator, address delegator) external view returns (
         uint256 delegatedAmount,
-        uint64 unstakeBlockedBefore,
-        uint256 pendingUndelegate
+        uint64 atEpoch
     );
 
-    function getValidatorDelegations(address validator) external view returns (
+    function getValidatorStatus(address validator) external view returns (
         uint8 status,
-        uint256 delegated
+        uint256 totalDelegated
     );
 
     function delegate(address validator) payable external;
