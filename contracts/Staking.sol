@@ -154,8 +154,8 @@ abstract contract Staking is IParlia, IStaking {
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // 1 ether is minimum delegate amount
-        require(amount >= 1 ether, "Staking: delegate amount too low");
-        require(amount % 1 gwei == 0, "Staking: amount shouldn't have a remainder");
+        require(amount >= 1 ether, "Staking: amount too low");
+        require(amount % 1 ether == 0, "Staking: amount shouldn't have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[toValidator];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
@@ -190,8 +190,8 @@ abstract contract Staking is IParlia, IStaking {
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
         // 1 ether is minimum delegate amount
-        require(amount >= 1 ether, "Staking: undelegate amount too low");
-        require(amount % 1 gwei == 0, "Staking: amount shouldn't have a remainder");
+        require(amount >= 1 ether, "Staking: amount too low");
+        require(amount % 1 ether == 0, "Staking: amount shouldn't have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
@@ -200,8 +200,9 @@ abstract contract Staking is IParlia, IStaking {
         // + find snapshot for the next epoch after current block
         // + increase total delegated amount in the next epoch for this validator
         // + re-save validator because last affected epoch might change
-        ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, _nextEpoch());
-        validatorSnapshot.totalDelegated += uint64(amount / 1 gwei);
+        ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, nextEpoch);
+        require(validatorSnapshot.totalDelegated >= uint64(amount / 1 gwei), "Staking: insufficient balance");
+        validatorSnapshot.totalDelegated -= uint64(amount / 1 gwei);
         _validatorsMap[fromValidator] = validator;
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
@@ -209,7 +210,7 @@ abstract contract Staking is IParlia, IStaking {
         ValidatorDelegation storage delegation = _validatorDelegations[fromValidator][toDelegator];
         require(delegation.delegateQueue.length > 0, "Staking: delegation queue is empty");
         DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
-        require(recentDelegateOp.amount >= uint64(amount / 1 gwei), "Staking: insufficient delegated amount");
+        require(recentDelegateOp.amount >= uint64(amount / 1 gwei), "Staking: insufficient balance");
         uint64 nextDelegatedAmount = recentDelegateOp.amount - uint64(amount / 1 gwei);
         if (recentDelegateOp.epoch >= nextEpoch) {
             // decrease total delegated amount for the next epoch
