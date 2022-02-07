@@ -8,7 +8,7 @@ abstract contract Staking is IParlia, IStaking {
     uint32 public constant MISDEMEANOR_THRESHOLD = 50;
     uint32 public constant FELONY_THRESHOLD = 150;
 
-    uint32 public constant DEFAULT_ACTIVE_VALIDATORS_SIZE = 22;
+    uint32 public constant DEFAULT_ACTIVE_VALIDATORS_LENGTH = 22;
     uint32 public constant DEFAULT_BLOCK_TIME_SEC = 3;
     uint32 public constant DEFAULT_EPOCH_BLOCK_INTERVAL = 100;
     /**
@@ -21,8 +21,8 @@ abstract contract Staking is IParlia, IStaking {
     event ValidatorAdded(address validator);
     event ValidatorRemoved(address validator);
     event ValidatorSlashed(address validator, uint32 slashes);
-    event Delegated(address validator, address staker, uint256 amount);
-    event Undelegated(address validator, address staker, uint256 amount);
+    event Delegated(address validator, address staker, uint256 amount, uint64 epoch);
+    event Undelegated(address validator, address staker, uint256 amount, uint64 epoch);
 
     enum ValidatorStatus {
         NotFound,
@@ -35,6 +35,7 @@ abstract contract Staking is IParlia, IStaking {
         uint128 totalRewards;
         uint64 totalDelegated;
         uint32 slashesCount;
+        // percents * 100 (ex. 0.3% = 0.3*100=30, min possible value is 0.01%, scale is 1e4)
         uint16 commissionRate;
     }
 
@@ -42,7 +43,8 @@ abstract contract Staking is IParlia, IStaking {
         address validatorAddress;
         address ownerAddress;
         ValidatorStatus status;
-        uint64 changedAtEpoch;
+        uint64 changedAt;
+        uint64 claimedAt;
     }
 
     struct DelegationOpDelegate {
@@ -70,19 +72,14 @@ abstract contract Staking is IParlia, IStaking {
     mapping(address => mapping(address => ValidatorDelegation)) internal _validatorDelegations;
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
-
-    // stake
-    // nextEpoch = block.number/100+1
-    // if last(stakeQueue).epoch != nextEpoch then push else amount=newAmount
-    uint32 internal _activeValidatorsSize;
+    // consensus parameters
+    uint32 internal _activeValidatorsLength;
     uint32 internal _epochBlockInterval;
-
-    uint64 internal _recentRewardDistribution;
-    uint64 internal _recentSlashAndRewardDistribution;
+    // total system fee that is available for claim for system needs
     uint256 internal _systemFee;
 
     constructor() {
-        _activeValidatorsSize = DEFAULT_ACTIVE_VALIDATORS_SIZE;
+        _activeValidatorsLength = DEFAULT_ACTIVE_VALIDATORS_LENGTH;
         _epochBlockInterval = DEFAULT_EPOCH_BLOCK_INTERVAL;
     }
 
@@ -107,7 +104,7 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     function _totalDelegatedToValidator(Validator memory validator) internal view returns (uint256) {
-        ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAtEpoch];
+        ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
         return snapshot.totalDelegated * 1 gwei;
     }
 
@@ -119,64 +116,168 @@ abstract contract Staking is IParlia, IStaking {
         _undelegateFrom(msg.sender, validatorAddress, amount);
     }
 
-    function currentEpoch() external view returns (uint64) {
-        return uint64(block.number / _epochBlockInterval);
+    function _prevEpoch() internal view returns (uint64) {
+        uint64 epoch = _currentEpoch();
+        if (epoch > 0) epoch--;
+        return epoch;
     }
 
-    function getEpochLength() external view returns (uint64) {
-        return uint64(_epochBlockInterval);
+    function _currentEpoch() internal view returns (uint64) {
+        return uint64(block.number / _epochBlockInterval + 0);
     }
 
-    function nextEpoch() external view returns (uint64) {
-        return uint64(block.number / _epochBlockInterval + 1);
+    function _nextEpoch() internal view returns (uint64) {
+        return _currentEpoch() + 1;
     }
 
-    function _delegateTo(address fromAddress, address toValidator, uint256 amount) internal {
+    function _touchValidatorSnapshot(Validator memory validator, uint64 epoch) internal returns (ValidatorSnapshot storage) {
+        ValidatorSnapshot storage snapshot = _validatorSnapshots[validator.validatorAddress][epoch];
+        // if snapshot is already initialized then just return it
+        if (snapshot.totalDelegated > 0) {
+            return snapshot;
+        }
+        // find previous snapshot to copy parameters from it
+        ValidatorSnapshot memory lastModifiedSnapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
+        // last modified snapshot might store zero value, for first delegation it might happen and its not critical
+        snapshot.totalDelegated = lastModifiedSnapshot.totalDelegated;
+        snapshot.commissionRate = lastModifiedSnapshot.commissionRate;
+        // we must save last affected epoch for this validator to be able to restore total delegated
+        // amount in the future (check condition upper)
+        validator.changedAt = epoch;
+        return snapshot;
+    }
+
+    function _applyNewValidatorCommissionRate(Validator memory validator, uint16 newCommissionRate) internal {
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        snapshot.commissionRate = newCommissionRate;
+    }
+
+    function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // 1 ether is minimum delegate amount
         require(amount >= 1 ether, "Staking: delegate amount too low");
         require(amount % 1 gwei == 0, "Staking: amount shouldn't have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[toValidator];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
-        // find snapshot for the next epoch after current block
-        uint64 nextEpoch = uint64(block.number / _epochBlockInterval + 1);
-        ValidatorSnapshot memory nextEpochSnapshot = _validatorSnapshots[toValidator][nextEpoch];
-        // if total delegated amount is zero then we need to initialize new snapshot with
-        // parameters from previous affected epoch
-        if (nextEpochSnapshot.totalDelegated == 0) {
-            ValidatorSnapshot memory lastModifiedSnapshot = _validatorSnapshots[toValidator][validator.changedAtEpoch];
-            // last modified snapshot might store zero value, for first delegation it might happen and its not critical
-            nextEpochSnapshot.totalDelegated = lastModifiedSnapshot.totalDelegated;
-            nextEpochSnapshot.commissionRate = lastModifiedSnapshot.commissionRate;
-            // we must save last affected epoch for this validator to be able to restore total delegated
-            // amount in the future (check condition upper)
-            validator.changedAtEpoch = nextEpoch;
-            _validatorsMap[toValidator] = validator;
-        }
-        // increase total delegated amount in the next epoch for this validator
-        nextEpochSnapshot.totalDelegated += uint64(amount / 1 gwei);
+        uint64 nextEpoch = _nextEpoch();
+        // Lets upgrade next snapshot parameters:
+        // + find snapshot for the next epoch after current block
+        // + increase total delegated amount in the next epoch for this validator
+        // + re-save validator because last affected epoch might change
+        ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        validatorSnapshot.totalDelegated += uint64(amount / 1 gwei);
+        _validatorsMap[toValidator] = validator;
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
         // new record in delegation queue with the last epoch (delegations are ordered by epoch)
-        ValidatorDelegation storage delegation = _validatorDelegations[toValidator][fromAddress];
+        ValidatorDelegation storage delegation = _validatorDelegations[toValidator][fromDelegator];
         if (delegation.delegateQueue.length > 0) {
-            DelegationOpDelegate storage lastPendingDelegate = delegation.delegateQueue[delegation.delegateQueue.length - 1];
-            if (lastPendingDelegate.epoch >= nextEpoch) {
-                lastPendingDelegate.amount += uint64(amount / 1 gwei);
+            DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
+            // if we already have pending snapshot for the next epoch then just increase new amount,
+            // otherwise create next pending snapshot. (tbh it can't be greater, but what we can do here instead?)
+            if (recentDelegateOp.epoch >= nextEpoch) {
+                recentDelegateOp.amount += uint64(amount / 1 gwei);
             } else {
-                delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : uint64(amount / 1 gwei)}));
+                delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : recentDelegateOp.amount + uint64(amount / 1 gwei)}));
             }
         } else {
+            // there is no any delegations at al, lets create the first one
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : uint64(amount / 1 gwei)}));
         }
-        // emit event
-        emit Delegated(toValidator, fromAddress, amount);
+        // emit event with the next epoch
+        emit Delegated(toValidator, fromDelegator, amount, nextEpoch);
     }
 
-    function _undelegateFrom(address toAddress, address fromValidator, uint256 amount) internal {
+    function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
+        // 1 ether is minimum delegate amount
+        require(amount >= 1 ether, "Staking: undelegate amount too low");
+        require(amount % 1 gwei == 0, "Staking: amount shouldn't have a remainder");
+        // make sure validator exists at least
+        Validator memory validator = _validatorsMap[fromValidator];
+        require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
+        uint64 nextEpoch = _nextEpoch();
+        // Lets upgrade next snapshot parameters:
+        // + find snapshot for the next epoch after current block
+        // + increase total delegated amount in the next epoch for this validator
+        // + re-save validator because last affected epoch might change
+        ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        validatorSnapshot.totalDelegated += uint64(amount / 1 gwei);
+        _validatorsMap[fromValidator] = validator;
+        // if last pending delegate has the same next epoch then its safe to just increase total
+        // staked amount because it can't affect current validator set, but otherwise we must create
+        // new record in delegation queue with the last epoch (delegations are ordered by epoch)
+        ValidatorDelegation storage delegation = _validatorDelegations[fromValidator][toDelegator];
+        require(delegation.delegateQueue.length > 0, "Staking: delegation queue is empty");
+        DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
+        require(recentDelegateOp.amount >= uint64(amount / 1 gwei), "Staking: insufficient delegated amount");
+        uint64 nextDelegatedAmount = recentDelegateOp.amount - uint64(amount / 1 gwei);
+        if (recentDelegateOp.epoch >= nextEpoch) {
+            // decrease total delegated amount for the next epoch
+            recentDelegateOp.amount = nextDelegatedAmount;
+        } else {
+            // there is no pending delegations, so lets create the new one with the new amount
+            delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : nextDelegatedAmount}));
+        }
+        // create new undelegate queue operation with soft lock
+        uint64 claimableAfterBlock = uint64(block.number) + VALIDATOR_UNDELEGATE_LOCK_PERIOD;
+        delegation.undelegateQueue.push(DelegationOpUndelegate({pendingAmount : amount, afterBlock : claimableAfterBlock}));
+        // emit event with the next epoch number
+        emit Undelegated(fromValidator, toDelegator, amount, nextEpoch);
     }
 
-    function _transferDelegation(address validator, address fromAddress, address toAddress, uint256 amount) internal {
+    function _claimDelegatorRewardsAndPendingUndelegates(address validator, address delegator) internal {
+        ValidatorDelegation storage delegation = _validatorDelegations[validator][delegator];
+        uint256 availableFunds = 0;
+        uint64 currentEpoch = _currentEpoch();
+        // process delegate queue to calculate staking rewards
+        while (delegation.delegateGap < delegation.delegateQueue.length) {
+            DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
+            uint256 voteChangedAtEpoch = 0;
+            if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
+                voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
+            }
+            for (; delegateOp.epoch < currentEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+                ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
+                if (validatorSnapshot.totalDelegated == 0) {
+                    continue;
+                }
+                (uint256 delegatorFee, uint256 ownerFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+                availableFunds += delegatorFee * delegateOp.amount / validatorSnapshot.totalDelegated;
+            }
+            delete delegation.delegateQueue[delegation.delegateGap];
+            ++delegation.delegateGap;
+        }
+        // process all items from undelegate queue
+        for (; delegation.undelegateGap < delegation.undelegateQueue.length; delegation.undelegateGap++) {
+            DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
+            if (block.number <= undelegateOp.afterBlock) {
+                break;
+            }
+            availableFunds += undelegateOp.pendingAmount;
+            delete delegation.undelegateQueue[delegation.undelegateGap];
+        }
+        // send available for claim funds to delegator
+        address payable payableDelegator = payable(delegator);
+        payableDelegator.transfer(availableFunds);
+    }
+
+    function _claimValidatorOwnerRewards(Validator storage validator) internal {
+        uint64 currentEpoch = _currentEpoch();
+        uint256 availableFunds = 0;
+        for (; validator.claimedAt < currentEpoch; validator.claimedAt++) {
+            ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator.validatorAddress][validator.claimedAt];
+            (uint256 delegatorFee, uint256 ownerFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+            availableFunds += ownerFee;
+        }
+        address payable payableOwner = payable(validator.ownerAddress);
+        payableOwner.transfer(availableFunds);
+    }
+
+    function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal pure returns (uint256 delegatorFee, uint256 ownerFee) {
+        // ownerFee_(18+4-4=18) = totalRewards_18 * commissionRate_4 / 1e4
+        ownerFee = validatorSnapshot.totalRewards * validatorSnapshot.commissionRate / 1e4;
+        // delegatorRewards = totalRewards - ownerFee
+        delegatorFee = validatorSnapshot.totalRewards - ownerFee;
     }
 
     function _addValidator(address account, address owner) internal {
@@ -230,10 +331,9 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     function getValidators() external view override returns (address[] memory) {
-        uint64 activeValidatorsLimit = _activeValidatorsSize;
         address[] memory activeValidators;
-        if (_validatorsList.length >= activeValidatorsLimit) {
-            activeValidators = new address[](activeValidatorsLimit);
+        if (_validatorsList.length >= _activeValidatorsLength) {
+            activeValidators = new address[](_activeValidatorsLength);
         } else {
             activeValidators = new address[](_validatorsList.length);
         }
@@ -294,73 +394,6 @@ abstract contract Staking is IParlia, IStaking {
         //        address payable payableOwner = payable(validator.validatorOwner);
         //        payableOwner.transfer(totalFee);
     }
-
-    //    function _slashValidatorsAndConfirmRewards() internal {
-    //        // do it only once some interval
-    //        if (block.number < _recentSlashAndRewardDistribution + SLASH_AND_COMMIT_VALIDATOR_BLOCK_INTERVAL) {
-    //            return;
-    //        }
-    //        uint256 totalSlashedIncome = 0;
-    //        uint256 goodValidators = 0;
-    //        // calculate average slashing payout from all slashed validators, we think that
-    //        // validator is slashed if validator has at least one block miss.
-    //        for (uint256 i = 0; i < _validatorsList.length; i++) {
-    //            Validator memory validator = _validatorsMap[_validatorsList[i]];
-    //            if (validator.totalSlashes > 0) {
-    //                totalSlashedIncome += validator.pendingBalance;
-    //            } else {
-    //                goodValidators++;
-    //            }
-    //        }
-    //        // distribute total slashed balance between honest validators and pay all dust to the system
-    //        if (goodValidators > 0) {
-    //            uint256 averageSlashingPayout = totalSlashedIncome / goodValidators;
-    //            for (uint256 i = 0; i < _validatorsList.length; i++) {
-    //                Validator memory validator = _validatorsMap[_validatorsList[i]];
-    //                if (validator.totalSlashes > 0) {
-    //                    continue;
-    //                }
-    //                validator.pendingBalance += averageSlashingPayout;
-    //            }
-    //            uint256 distributionDust = totalSlashedIncome - averageSlashingPayout * goodValidators;
-    //            _systemFee += distributionDust;
-    //        } else {
-    //            _systemFee += totalSlashedIncome;
-    //        }
-    //        // confirm pending validator rewards and reset slashing state
-    //        for (uint256 i = 0; i < _validatorsList.length; i++) {
-    //            Validator memory validator = _validatorsMap[_validatorsList[i]];
-    //            if (validator.totalSlashes > 0) {
-    //                // for slashed validator lets just reset all his stats and
-    //                // let him start again, probably its better to put this validator in jail
-    //                // for some period of time
-    //                validator.totalSlashes = 0;
-    //                validator.pendingBalance = 0;
-    //            } else {
-    //                // move pending validator's balance to confirmed, it means that now validator
-    //                // can distribute this rewards between delegates
-    //                validator.confirmedBalance += validator.pendingBalance;
-    //                validator.pendingBalance = 0;
-    //            }
-    //        }
-    //        // update latest reward commit block
-    //        _recentSlashAndRewardDistribution = uint64(block.number);
-    //    }
-    //
-    //    function _releasePendingUndelegate(ValidatorDelegation memory delegation) internal {
-    //        uint256 transferAmount = delegation.pendingUndelegate;
-    //        // if staker doesn't have pending undelegates or staker is still in lock period then just exit
-    //        if (transferAmount == 0 || delegation.undelegateBlockedBefore == 0 || block.number < delegation.undelegateBlockedBefore) {
-    //            return;
-    //        }
-    //        // reset lock period for future undelegates
-    //        delegation.pendingUndelegate = 0;
-    //        delegation.undelegateBlockedBefore = 0;
-    //        // transfer tokens to the user
-    //        address payable payableAccount = payable(delegation.accountAddress);
-    //        (bool sent) = payableAccount.call{gas : 30_000, value : msg.value}("");
-    //        require(sent, "Staking: transfer failed");
-    //    }
 
     function _slashValidator(address validatorAddress) internal {
         // make sure validator was active
