@@ -16,7 +16,6 @@ abstract contract Staking is IParlia, IStaking {
      */
     uint32 public constant SLASH_AND_COMMIT_VALIDATOR_BLOCK_INTERVAL = 1 * 60 * 60 / DEFAULT_BLOCK_TIME_SEC; // 1 hour
     uint32 public constant DISTRIBUTE_DELEGATION_REWARDS_BLOCK_INTERVAL = 1 * 24 * 60 * 60 / DEFAULT_BLOCK_TIME_SEC; // 1 day
-    uint32 public constant VALIDATOR_UNDELEGATE_LOCK_PERIOD = 7 * 24 * 60 * 60 / DEFAULT_BLOCK_TIME_SEC; // 7 days
 
     event ValidatorAdded(address validator);
     event ValidatorRemoved(address validator);
@@ -53,8 +52,8 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     struct DelegationOpUndelegate {
-        uint256 pendingAmount;
-        uint64 afterBlock;
+        uint256 amount;
+        uint64 epoch;
     }
 
     struct ValidatorDelegation {
@@ -220,19 +219,27 @@ abstract contract Staking is IParlia, IStaking {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        uint64 claimableAfterBlock = uint64(block.number) + VALIDATOR_UNDELEGATE_LOCK_PERIOD;
-        delegation.undelegateQueue.push(DelegationOpUndelegate({pendingAmount : amount, afterBlock : claimableAfterBlock}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, nextEpoch);
     }
 
     function _claimDelegatorRewardsAndPendingUndelegates(address validator, address delegator) internal {
         ValidatorDelegation storage delegation = _validatorDelegations[validator][delegator];
+        // lets fail fast if there is nothing to claim
+        if (delegation.delegateGap >= delegation.delegateQueue.length &&
+            delegation.undelegateGap >= delegation.undelegateQueue.length
+        ) {
+            revert("Staking: nothing to claim");
+        }
         uint256 availableFunds = 0;
         uint64 currentEpoch = _currentEpoch();
         // process delegate queue to calculate staking rewards
         while (delegation.delegateGap < delegation.delegateQueue.length) {
             DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
+            if (delegateOp.epoch >= currentEpoch) {
+                break;
+            }
             uint256 voteChangedAtEpoch = 0;
             if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
@@ -249,17 +256,57 @@ abstract contract Staking is IParlia, IStaking {
             ++delegation.delegateGap;
         }
         // process all items from undelegate queue
-        for (; delegation.undelegateGap < delegation.undelegateQueue.length; delegation.undelegateGap++) {
+        while (delegation.undelegateGap < delegation.undelegateQueue.length) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
-            if (block.number <= undelegateOp.afterBlock) {
+            if (undelegateOp.epoch >= currentEpoch) {
                 break;
             }
-            availableFunds += undelegateOp.pendingAmount;
+            availableFunds += undelegateOp.amount;
             delete delegation.undelegateQueue[delegation.undelegateGap];
+            ++delegation.undelegateGap;
         }
         // send available for claim funds to delegator
         address payable payableDelegator = payable(delegator);
         payableDelegator.transfer(availableFunds);
+    }
+
+    function _calcDelegatorRewardsAndPendingUndelegates(address validator, address delegator) internal view returns (uint256) {
+        ValidatorDelegation memory delegation = _validatorDelegations[validator][delegator];
+        uint256 availableFunds = 0;
+        uint64 currentEpoch = _currentEpoch();
+        // process delegate queue to calculate staking rewards
+        while (delegation.delegateGap < delegation.delegateQueue.length) {
+            DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
+            if (delegateOp.epoch >= currentEpoch) {
+                break;
+            }
+            uint256 voteChangedAtEpoch = 0;
+            if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
+                voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
+            }
+            for (; delegateOp.epoch < currentEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+                ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
+                if (validatorSnapshot.totalDelegated == 0) {
+                    continue;
+                }
+                (uint256 delegatorFee, uint256 ownerFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+                availableFunds += delegatorFee * delegateOp.amount / validatorSnapshot.totalDelegated;
+            }
+            delete delegation.delegateQueue[delegation.delegateGap];
+            ++delegation.delegateGap;
+        }
+        // process all items from undelegate queue
+        while (delegation.undelegateGap < delegation.undelegateQueue.length) {
+            DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
+            if (undelegateOp.epoch >= currentEpoch) {
+                break;
+            }
+            availableFunds += undelegateOp.amount;
+            delete delegation.undelegateQueue[delegation.undelegateGap];
+            ++delegation.undelegateGap;
+        }
+        // return available for claim funds
+        return availableFunds;
     }
 
     function _claimValidatorOwnerRewards(Validator storage validator) internal {
@@ -272,6 +319,17 @@ abstract contract Staking is IParlia, IStaking {
         }
         address payable payableOwner = payable(validator.ownerAddress);
         payableOwner.transfer(availableFunds);
+    }
+
+    function _calcValidatorOwnerRewards(Validator memory validator) internal view returns (uint256) {
+        uint64 currentEpoch = _currentEpoch();
+        uint256 availableFunds = 0;
+        for (; validator.claimedAt < currentEpoch; validator.claimedAt++) {
+            ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator.validatorAddress][validator.claimedAt];
+            (uint256 delegatorFee, uint256 ownerFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+            availableFunds += ownerFee;
+        }
+        return availableFunds;
     }
 
     function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal pure returns (uint256 delegatorFee, uint256 ownerFee) {
@@ -369,31 +427,27 @@ abstract contract Staking is IParlia, IStaking {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Alive, "Staking: validator not active");
         // increase total pending rewards for validator for current epoch
-        uint64 currentEpoch = uint64(block.number / _epochBlockInterval);
-        ValidatorSnapshot memory currentSnapshot = _validatorSnapshots[validatorAddress][currentEpoch];
+        uint64 currentEpoch = _currentEpoch();
+        ValidatorSnapshot storage currentSnapshot = _validatorSnapshots[validatorAddress][currentEpoch];
         currentSnapshot.totalRewards += uint128(msg.value);
-        _validatorSnapshots[validatorAddress][currentEpoch] = currentSnapshot;
     }
 
-    function claimDepositFee(address validatorAddress) external override {
-        //        // make sure validator exists at least
-        //        Validator memory validator = _validatorsMap[validatorAddress];
-        //        require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
-        //        // only validator owner can claim deposit fee
-        //        require(msg.sender == validator.validatorOwner, "Staking: only validator owner");
-        //        // claim deposit fee
-        //        _claimDepositFee(validator);
+    function claimValidatorFee(address validatorAddress) external override {
+        // make sure validator exists at least
+        Validator storage validator = _validatorsMap[validatorAddress];
+        require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
+        // only validator owner can claim deposit fee
+        require(msg.sender == validator.ownerAddress, "Staking: only validator owner");
+        // claim all validator fees
+        _claimValidatorOwnerRewards(validator);
     }
 
-    function _claimDepositFee(Validator memory validator) internal {
-        //        // check that claimable fee is greater than 0
-        //        uint256 totalFee = validator.confirmedBalance;
-        //        require(totalFee > 0, "Staking: nothing to claim");
-        //        // decrease confirmed balance
-        //        validator.confirmedBalance -= totalFee;
-        //        // send fee to the validator owner
-        //        address payable payableOwner = payable(validator.validatorOwner);
-        //        payableOwner.transfer(totalFee);
+    function claimDelegatorFee(address validatorAddress) external override {
+        // make sure validator exists at least
+        Validator storage validator = _validatorsMap[validatorAddress];
+        require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
+        // claim all confirmed delegator fees including undelegates
+        _claimDelegatorRewardsAndPendingUndelegates(validatorAddress, msg.sender);
     }
 
     function _slashValidator(address validatorAddress) internal {
