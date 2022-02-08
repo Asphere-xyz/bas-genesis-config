@@ -15,10 +15,17 @@ const newGovernanceContract = async (owner) => {
   return {deployer, governance, parlia}
 }
 
-const newMockContract = async (owner) => {
+const DEFAULT_MOCK_PARAMS = {
+  activeValidatorsLength: '3',
+  epochBlockInterval: '10',
+  systemTreasury: '0x0000000000000000000000000000000000000000',
+};
+
+const newMockContract = async (owner, params = DEFAULT_MOCK_PARAMS) => {
+  const {activeValidatorsLength, epochBlockInterval, systemTreasury} = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   const deployer = await Deployer.new([]);
   const governance = await Governance.new(owner, 1);
-  const parlia = await FakeStaking.new();
+  const parlia = await FakeStaking.new(activeValidatorsLength, epochBlockInterval, systemTreasury);
   await deployer.initManually(deployer.address, governance.address, parlia.address);
   await governance.initManually(deployer.address, governance.address, parlia.address);
   await parlia.initManually(deployer.address, governance.address, parlia.address);
@@ -74,6 +81,19 @@ const registerDeployedContract = async (governance, deployer, owner, contract, s
   return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Register ${contract} deployed contract (${randomProposalDesc()})`, sender)
 }
 
+const expectError = async (promise, text) => {
+  try {
+    await promise;
+  } catch (e) {
+    if (e.message.includes(text)) {
+      return;
+    }
+    console.error(new Error(`Unexpected error: ${text}`))
+  }
+  console.error(new Error(`Expected error: ${text}`))
+  assert.fail();
+}
+
 module.exports = {
   newGovernanceContract,
   newMockContract,
@@ -83,4 +103,5 @@ module.exports = {
   removeDeployer,
   registerDeployedContract,
   createAndExecuteInstantProposal,
+  expectError,
 }

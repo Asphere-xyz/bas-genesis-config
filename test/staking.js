@@ -5,29 +5,13 @@
 /** @function before */
 /** @var assert */
 
-const Deployer = artifacts.require("Deployer");
-const Governance = artifacts.require("Governance");
-const Parlia = artifacts.require("Parlia");
-const FakeStaking = artifacts.require("FakeStaking");
-
-const expectError = async (promise, text) => {
-  try {
-    await promise;
-  } catch (e) {
-    if (e.message.includes(text)) {
-      return;
-    }
-    console.error(new Error(`Unexpected error: ${text}`))
-  }
-  console.error(new Error(`Expected error: ${text}`))
-  assert.fail();
-}
+const {newMockContract, expectError} = require("./helper");
 
 contract("Staking", async (accounts) => {
-  const [staker1, staker2, staker3, validator1, validator2, validator3, validator4, validator5] = accounts
+  const [owner, staker1, staker2, staker3, validator1, validator2, validator3, validator4, validator5] = accounts
   it("simple delegation", async () => {
     // 1 transaction = 1 block, current epoch length is 10 blocks
-    const parlia = await FakeStaking.new();
+    const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
     let res = await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0
     assert.equal(res.logs[0].args.validator, validator1);
@@ -49,7 +33,7 @@ contract("Staking", async (accounts) => {
     assert.equal(result.status.toString(), '1')
   })
   it("undelegate should work on existing delegation", async () => {
-    const parlia = await FakeStaking.new();
+    const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
     await parlia.addValidator(validator2);
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // +1.0
@@ -70,7 +54,7 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorDelegation(validator2, staker2)).delegatedAmount.toString(), '0')
   });
   it("staker can't undelegate more than delegated", async () => {
-    const parlia = await FakeStaking.new();
+    const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
     // delegate 6 tokens to the validator
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // +1.0
@@ -95,7 +79,7 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorStatus(validator1)).totalDelegated.toString(), '0')
   })
   it("active validator order", async () => {
-    const parlia = await FakeStaking.new();
+    const {parlia} = await newMockContract(owner)
     // check current epochs
     await parlia.addValidator(validator1); // 0x821aEa9a577a9b44299B9c15c88cf3087F3b5544
     await parlia.addValidator(validator2); // 0x0d1d4e623D10F9FBA5Db95830F7d3839406C6AF2
@@ -122,7 +106,7 @@ contract("Staking", async (accounts) => {
     ])
   });
   it("stake to non-existing validator", async () => {
-    const parlia = await FakeStaking.new();
+    const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
     await parlia.addValidator(validator3);
     await expectError(parlia.delegate(validator2, {
@@ -131,7 +115,7 @@ contract("Staking", async (accounts) => {
     }), 'Staking: validator not found')
   });
   it("incorrect staking amounts", async () => {
-    const parlia = await FakeStaking.new();
+    const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
     await expectError(parlia.delegate(validator1, {
       from: staker1,
