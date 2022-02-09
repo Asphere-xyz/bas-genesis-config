@@ -443,31 +443,36 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     function getValidators() external view override returns (address[] memory) {
-        address[] memory activeValidators;
-        if (_validatorsList.length >= _activeValidatorsLength) {
-            activeValidators = new address[](_activeValidatorsLength);
-        } else {
-            activeValidators = new address[](_validatorsList.length);
-        }
-        // sort validators
-        address[] memory orderedValidators = new address[](_validatorsList.length);
-        for (uint256 i = 0; i < _validatorsList.length; i++) {
+        uint256 n = _validatorsList.length;
+        address[] memory orderedValidators = new address[](n);
+        for (uint256 i = 0; i < n; i++) {
             orderedValidators[i] = _validatorsList[i];
         }
-        for (uint256 i = 0; i < orderedValidators.length; i++) {
-            Validator memory left = _validatorsMap[orderedValidators[i]];
-            for (uint256 j = i + 1; j < orderedValidators.length; j++) {
-                Validator memory right = _validatorsMap[orderedValidators[j]];
-                if (_totalDelegatedToValidator(left) < _totalDelegatedToValidator(right)) {
-                    (orderedValidators[i], orderedValidators[j]) = (orderedValidators[j], orderedValidators[i]);
+
+        // we need to select k top validators out of n
+        uint256 k = _activeValidatorsLength;
+        if (k > n) k = n;
+
+        for (uint256 i = 0; i < k; i++) {
+            uint256 nextValidator = i;
+            Validator memory currentMax = _validatorsMap[orderedValidators[nextValidator]];
+            for (uint256 j = i + 1; j < n; j++) {
+                Validator memory current = _validatorsMap[orderedValidators[j]];
+                if (_totalDelegatedToValidator(currentMax) < _totalDelegatedToValidator(current)) {
+                    nextValidator = j;
+                    currentMax = current;
                 }
             }
+            // Swap i-th validator with new found winner
+            address backup = orderedValidators[i];
+            orderedValidators[i] = orderedValidators[nextValidator];
+            orderedValidators[nextValidator] = backup;
         }
-        // form top 22 active validators
-        for (uint256 i = 0; i < activeValidators.length; i++) {
-            activeValidators[i] = orderedValidators[i];
+        // this is to cut array to first k elements without copying
+        assembly {
+            mstore(orderedValidators, k)
         }
-        return activeValidators;
+        return orderedValidators;
     }
 
     function _depositFee(address validatorAddress) internal {
