@@ -123,11 +123,11 @@ type genesisConfig struct {
 func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis := config.Genesis
 	// extra data
-	if len(config.Validators) >= 3 {
-		genesis.ExtraData = createExtraData(config.Validators[0:3])
-	} else {
-		genesis.ExtraData = createExtraData(config.Validators)
-	}
+	//if len(config.Validators) >= 3 {
+	//	genesis.ExtraData = createExtraData(config.Validators[0:3])
+	//} else {
+	genesis.ExtraData = createExtraData(config.Validators)
+	//}
 	// execute system contracts
 	ctor, err := newArguments("address[]").Pack(config.Deployers)
 	if err != nil {
@@ -234,8 +234,8 @@ var testnetConfig = genesisConfig{
 		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"),
 		common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"),
 		common.HexToAddress("0xa6ff33e3250cc765052ac9d7f7dfebda183c4b9b"),
-		//common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
-		//common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
+		common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
+		common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
 	},
 	// owner of the governance
 	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),

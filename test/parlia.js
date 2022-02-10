@@ -10,7 +10,7 @@ const BigNumber = require('bignumber.js');
 
 contract("Parlia", async (accounts) => {
   const [owner, treasury] = accounts
-  it("add remove validator", async () => {
+  it("governance can add or remove validator", async () => {
     const {governance, parlia} = await newGovernanceContract(owner);
     assert.equal(await parlia.isValidator('0x00A601f45688DbA8a070722073B015277cF36725'), false)
     const {receipt: {rawLogs: rawLogs1}} = await addValidator(governance, parlia, '0x00A601f45688DbA8a070722073B015277cF36725', owner),
@@ -28,7 +28,7 @@ contract("Parlia", async (accounts) => {
     const validators2 = await parlia.getValidators()
     assert.deepEqual(validators2, [])
   });
-  it("remove first added validator", async () => {
+  it("remove firstly added validator", async () => {
     const {parlia, governance} = await newGovernanceContract(owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000001', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000002', owner)
@@ -44,7 +44,7 @@ contract("Parlia", async (accounts) => {
       '0x0000000000000000000000000000000000000003',
     ])
   })
-  it("remove some validator from the list", async () => {
+  it("remove validator from the center of the list", async () => {
     const {parlia, governance} = await newGovernanceContract(owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000001', owner)
     await addValidator(governance, parlia, '0x0000000000000000000000000000000000000002', owner)

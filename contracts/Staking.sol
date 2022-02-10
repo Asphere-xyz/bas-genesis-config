@@ -30,10 +30,11 @@ abstract contract Staking is IParlia, IStaking {
 
     event ValidatorAdded(address validator, address owner, uint8 status, uint16 commissionRate);
     event ValidatorRemoved(address validator);
-    event ValidatorSlashed(address validator, uint32 slashes, uint64 epoch);
-    event ValidatorJailed(address validator, uint64 epoch);
+    event Slashed(address validator, uint32 slashes, uint64 epoch);
+    event Jailed(address validator, uint64 epoch);
     event Delegated(address validator, address staker, uint256 amount, uint64 epoch);
     event Undelegated(address validator, address staker, uint256 amount, uint64 epoch);
+    event Claimed(address validator, address staker, uint256 amount, uint64 epoch);
 
     enum ValidatorStatus {
         NotFound,
@@ -283,18 +284,18 @@ abstract contract Staking is IParlia, IStaking {
             revert("Staking: nothing to claim");
         }
         uint256 availableFunds = 0;
-        uint64 epoch = _currentEpoch();
+        uint64 beforeEpoch = _currentEpoch();
         // process delegate queue to calculate staking rewards
         while (delegation.delegateGap < delegation.delegateQueue.length) {
             DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
-            if (delegateOp.epoch >= epoch) {
+            if (delegateOp.epoch >= beforeEpoch) {
                 break;
             }
             uint256 voteChangedAtEpoch = 0;
             if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
             }
-            for (; delegateOp.epoch < epoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+            for (; delegateOp.epoch < beforeEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
                 ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
@@ -308,7 +309,7 @@ abstract contract Staking is IParlia, IStaking {
         // process all items from undelegate queue
         while (delegation.undelegateGap < delegation.undelegateQueue.length) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
-            if (undelegateOp.epoch >= epoch) {
+            if (undelegateOp.epoch >= beforeEpoch) {
                 break;
             }
             availableFunds += undelegateOp.amount;
@@ -318,6 +319,8 @@ abstract contract Staking is IParlia, IStaking {
         // send available for claim funds to delegator
         address payable payableDelegator = payable(delegator);
         payableDelegator.transfer(availableFunds);
+        // emit event
+        emit Claimed(validator, delegator, availableFunds, beforeEpoch);
     }
 
     function _calcDelegatorRewardsAndPendingUndelegates(address validator, address delegator) internal view returns (uint256) {
@@ -342,7 +345,6 @@ abstract contract Staking is IParlia, IStaking {
                 (uint256 delegatorFee, /*uint256 ownerFee*/, /*uint256 systemFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
                 availableFunds += delegatorFee * delegateOp.amount / validatorSnapshot.totalDelegated;
             }
-            delete delegation.delegateQueue[delegation.delegateGap];
             ++delegation.delegateGap;
         }
         // process all items from undelegate queue
@@ -352,7 +354,6 @@ abstract contract Staking is IParlia, IStaking {
                 break;
             }
             availableFunds += undelegateOp.amount;
-            delete delegation.undelegateQueue[delegation.undelegateGap];
             ++delegation.undelegateGap;
         }
         // return available for claim funds
@@ -597,10 +598,10 @@ abstract contract Staking is IParlia, IStaking {
             validator.jailedBefore = _currentEpoch() + _consensusParams.validatorJailEpochLength;
             validator.status = ValidatorStatus.Jail;
             _validatorsMap[validatorAddress] = validator;
-            emit ValidatorJailed(validatorAddress, epoch);
+            emit Jailed(validatorAddress, epoch);
         }
         // emit event
-        emit ValidatorSlashed(validatorAddress, slashesCount, epoch);
+        emit Slashed(validatorAddress, slashesCount, epoch);
     }
 
     function getSystemTreasury() external view returns (address) {

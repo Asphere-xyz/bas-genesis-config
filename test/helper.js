@@ -1,4 +1,5 @@
 /** @var web3 {Web3} */
+const BigNumber = require("bignumber.js");
 
 const Deployer = artifacts.require("Deployer");
 const Governance = artifacts.require("Governance");
@@ -46,8 +47,8 @@ const advanceBlock = () => {
   return new Promise((resolve, reject) => {
     web3.currentProvider.send({
       jsonrpc: "2.0",
-      method:  "evm_mine",
-      id:      new Date().getTime()
+      method: "evm_mine",
+      id: new Date().getTime()
     }, (err, result) => {
       if (err) {
         return reject(err);
@@ -149,6 +150,22 @@ const expectError = async (promise, text) => {
   assert.fail();
 }
 
+const extractTxCost = (executionResult) => {
+  const {receipt: {gasUsed, effectiveGasPrice}} = executionResult;
+  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(new BigNumber(effectiveGasPrice.substr(2), 16));
+  return executionResult;
+}
+
+const waitForNextEpoch = async (parlia, blockStep = 1) => {
+  const currentEpoch = await parlia.currentEpoch()
+  while (true) {
+    await advanceBlocks(blockStep)
+    const nextEpoch = await parlia.currentEpoch()
+    if (`${currentEpoch}` === `${nextEpoch}`) continue;
+    break;
+  }
+}
+
 module.exports = {
   newGovernanceContract,
   newMockContract,
@@ -159,6 +176,8 @@ module.exports = {
   registerDeployedContract,
   createAndExecuteInstantProposal,
   expectError,
+  extractTxCost,
+  waitForNextEpoch,
   advanceBlock,
   advanceBlocks,
 }

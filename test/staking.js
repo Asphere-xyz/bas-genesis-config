@@ -5,11 +5,12 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, expectError, advanceBlocks} = require("./helper");
+const {newMockContract, expectError, extractTxCost, waitForNextEpoch} = require("./helper");
+const BigNumber = require('bignumber.js');
 
 contract("Staking", async (accounts) => {
   const [owner, staker1, staker2, staker3, validator1, validator2, validator3, validator4, validator5] = accounts
-  it("staker can do simple delegation", async () => {
+  it("staker can do simple a delegation", async () => {
     // 1 transaction = 1 block, current epoch length is 10 blocks
     const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
@@ -78,7 +79,7 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorDelegation(validator1, staker1)).delegatedAmount.toString(), '0')
     assert.equal((await parlia.getValidatorStatus(validator1)).totalDelegated.toString(), '0')
   })
-  it("active validator order", async () => {
+  it("active validator set depends on staked amount", async () => {
     const {parlia} = await newMockContract(owner)
     // check current epochs
     await parlia.addValidator(validator1); // 0x821aEa9a577a9b44299B9c15c88cf3087F3b5544
@@ -115,8 +116,47 @@ contract("Staking", async (accounts) => {
     }), 'Staking: validator not found')
   });
   it("validator rewards are well-calculated", async () => {
-    const {parlia} = await newMockContract(owner)
-    // TODO: "finish me"
+    const {parlia} = await newMockContract(owner, {
+      epochBlockInterval: '50',
+    })
+    await parlia.addValidator(validator1);
+    await parlia.changeValidatorCommissionRate(validator1, '30', {from: validator1}); // 0.3%
+    // delegate 1 ether to validator (100% of power)
+    await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1 ether
+    // wait for the next epoch to apply fee scheme
+    await waitForNextEpoch(parlia);
+    // validator get fees (1.1111 ether)
+    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
+    await parlia.deposit(validator1, {from: validator1, value: '100000000000000000'}); // 0.1 ether
+    await parlia.deposit(validator1, {from: validator1, value: '10000000000000000'}); // 0.01 ether
+    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000'}); // 0.001 ether
+    await parlia.deposit(validator1, {from: validator1, value: '100000000000000'}); // 0.0001 ether
+    // wait before end of the epoch
+    await waitForNextEpoch(parlia);
+    // check rewards
+    let validatorFee = await parlia.getValidatorFee(validator1)
+    assert.equal(validatorFee.toString(10), '3333300000000000');
+    let stakerFee = await parlia.getDelegatorFee(validator1, {from: staker1})
+    assert.equal(stakerFee.toString(10), '1107766700000000000');
+    // let's skip next epoch w/ no rewards
+    await waitForNextEpoch(parlia);
+    // amounts should be the same
+    validatorFee = await parlia.getValidatorFee(validator1)
+    assert.equal(validatorFee.toString(10), '3333300000000000');
+    stakerFee = await parlia.getDelegatorFee(validator1, {from: staker1})
+    assert.equal(stakerFee.toString(10), '1107766700000000000');
+    // let's claim staker fee
+    let delegatorBalanceBefore = new BigNumber(await web3.eth.getBalance(staker1));
+    const {logs, txCost} = extractTxCost(await parlia.claimDelegatorFee(validator1, {from: staker1}));
+    assert.equal(logs[0].event, 'Claimed')
+    assert.equal(logs[0].args.amount, '1107766700000000000')
+    let delegatorBalanceAfter = new BigNumber(await web3.eth.getBalance(staker1));
+    assert.equal(delegatorBalanceAfter.minus(delegatorBalanceBefore).plus(txCost).toString(10), '1107766700000000000')
+    // fee should be zero now for delegator
+    validatorFee = await parlia.getValidatorFee(validator1)
+    assert.equal(validatorFee.toString(10), '3333300000000000');
+    stakerFee = await parlia.getDelegatorFee(validator1, {from: staker1})
+    assert.equal(stakerFee.toString(10), '0');
   })
   it("no validator rewards for inactivity", async () => {
     const {parlia} = await newMockContract(owner, {
@@ -135,12 +175,9 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
     // wait for the next epoch
-    assert.equal(await parlia.currentEpoch(), '0')
-    await advanceBlocks(40)
-    assert.equal(await parlia.currentEpoch(), '1')
+    await waitForNextEpoch(parlia);
     // make sure fee is zero
     const validatorFee = await parlia.getValidatorFee(validator1)
-    console.log(validatorFee.toString());
     assert.equal(validatorFee.toString(), '0')
   });
   it("incorrect staking amounts", async () => {
@@ -186,7 +223,7 @@ contract("Staking", async (accounts) => {
       epochBlockInterval: '50', // 50 blocks
       misdemeanorThreshold: '10', // penalty after 10 misses
       felonyThreshold: '5', // jail after 5 misses
-      validatorJailEpochLength: '2', // put in jail for 2 epochs (60 blocks)
+      validatorJailEpochLength: '2', // put in jail for 2 epochs (100 blocks)
     })
     await parlia.addValidator(validator1);
     await parlia.addValidator(validator2);
@@ -195,22 +232,21 @@ contract("Staking", async (accounts) => {
     // all validators are active
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+    // let's wait for the next epoch (to be sure that slashing happen in one epoch)
+    await waitForNextEpoch(parlia)
     // slash for 5 times
     for (let i = 0; i < 5; i++) {
       await parlia.slash(validator2, {from: validator1});
     }
-    // make sure we're on 2 epoch
-    assert.equal(await parlia.currentEpoch(), '2');
     // now validator 2 is in jail
     let status2 = await parlia.getValidatorStatus(validator2)
+    assert.equal(status2.slashesCount.toString(), '5');
     assert.equal(status2.status.toString(), '3');
-    assert.equal(status2.jailedBefore.toString(), '4');
     // try to release validator before jail period end
     await expectError(parlia.releaseValidatorFromJail(validator2, {from: validator2}), 'Staking: still in jail')
     // sleep until epoch 3 is reached
-    assert.equal(await parlia.currentEpoch(), '2');
-    await advanceBlocks(100);
-    assert.equal(await parlia.currentEpoch(), '4');
+    await waitForNextEpoch(parlia);
+    await waitForNextEpoch(parlia);
     // now release should work
     await expectError(parlia.releaseValidatorFromJail(validator2, {from: validator1}), 'Staking: only validator owner')
     await parlia.releaseValidatorFromJail(validator2, {from: validator2})
