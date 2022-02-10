@@ -63,6 +63,8 @@ interface IStaking {
 
     function disableValidator(address validator) external;
 
+    function releaseValidatorFromJail(address validator) external;
+
     function changeValidatorCommissionRate(address validator, uint16 commissionRate) external;
 
     function getValidatorDelegation(address validator, address delegator) external view returns (

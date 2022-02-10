@@ -7,15 +7,11 @@ abstract contract Staking is IParlia, IStaking {
 
     uint32 public constant MISDEMEANOR_THRESHOLD = 50;
     uint32 public constant FELONY_THRESHOLD = 150;
+    uint64 public constant VALIDATOR_JAIL_EPOCH_LENGTH = 7;
 
     uint32 public constant DEFAULT_ACTIVE_VALIDATORS_LENGTH = 22;
     uint32 public constant DEFAULT_BLOCK_TIME_SEC = 3;
     uint32 public constant DEFAULT_EPOCH_BLOCK_INTERVAL = 100;
-    /**
-     * Frequency of reward distribution and validator refresh
-     */
-    uint32 public constant SLASH_AND_COMMIT_VALIDATOR_BLOCK_INTERVAL = 1 * 60 * 60 / DEFAULT_BLOCK_TIME_SEC; // 1 hour
-    uint32 public constant DISTRIBUTE_DELEGATION_REWARDS_BLOCK_INTERVAL = 1 * 24 * 60 * 60 / DEFAULT_BLOCK_TIME_SEC; // 1 day
     /**
      * Parlia has 100 ether limit for max fee, its better to enable auto claim
      * for the system treasury otherwise it might cause lost of funds
@@ -57,6 +53,7 @@ abstract contract Staking is IParlia, IStaking {
         address ownerAddress;
         ValidatorStatus status;
         uint64 changedAt;
+        uint64 jailedBefore;
         uint64 claimedAt;
     }
 
@@ -124,6 +121,18 @@ abstract contract Staking is IParlia, IStaking {
         changedAt = validator.changedAt,
         claimedAt = validator.claimedAt
         );
+    }
+
+    function releaseValidatorFromJail(address validatorAddress) external {
+        // make sure validator is in jail
+        Validator memory validator = _validatorsMap[validatorAddress];
+        require(validator.status == ValidatorStatus.Jail, "Staking: validator not in jail");
+        // only validator owner
+        require(msg.sender == validator.ownerAddress, "Staking: only validator owner");
+        require(_currentEpoch() >= validator.jailedBefore, "Staking: still in jail");
+        // update validator status
+        validator.status = ValidatorStatus.Alive;
+        _validatorsMap[validatorAddress] = validator;
     }
 
     function _totalDelegatedToValidator(Validator memory validator) internal view returns (uint256) {
@@ -268,7 +277,7 @@ abstract contract Staking is IParlia, IStaking {
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
                 }
-                (uint256 delegatorFee, /*uint256 ownerFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+                (uint256 delegatorFee, /*uint256 ownerFee*/, /*uint256 systemFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
                 availableFunds += delegatorFee * delegateOp.amount / validatorSnapshot.totalDelegated;
             }
             delete delegation.delegateQueue[delegation.delegateGap];
@@ -308,7 +317,7 @@ abstract contract Staking is IParlia, IStaking {
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
                 }
-                (uint256 delegatorFee, /*uint256 ownerFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+                (uint256 delegatorFee, /*uint256 ownerFee*/, /*uint256 systemFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
                 availableFunds += delegatorFee * delegateOp.amount / validatorSnapshot.totalDelegated;
             }
             delete delegation.delegateQueue[delegation.delegateGap];
@@ -331,13 +340,19 @@ abstract contract Staking is IParlia, IStaking {
     function _claimValidatorOwnerRewards(Validator storage validator) internal {
         uint64 currentEpoch = _currentEpoch();
         uint256 availableFunds = 0;
+        uint256 systemFee = 0;
         for (; validator.claimedAt < currentEpoch; validator.claimedAt++) {
             ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator.validatorAddress][validator.claimedAt];
-            (/*uint256 delegatorFee*/, uint256 ownerFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+            (/*uint256 delegatorFee*/, uint256 ownerFee, uint256 slashingFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
             availableFunds += ownerFee;
+            systemFee += slashingFee;
         }
         address payable payableOwner = payable(validator.ownerAddress);
         payableOwner.transfer(availableFunds);
+        // if we have system fee then pay it to treasury account
+        if (systemFee > 0) {
+            _payToTreasury(systemFee);
+        }
     }
 
     function _calcValidatorOwnerRewards(Validator memory validator) internal view returns (uint256) {
@@ -345,17 +360,23 @@ abstract contract Staking is IParlia, IStaking {
         uint256 availableFunds = 0;
         for (; validator.claimedAt < currentEpoch; validator.claimedAt++) {
             ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator.validatorAddress][validator.claimedAt];
-            (/*uint256 delegatorFee*/, uint256 ownerFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
+            (/*uint256 delegatorFee*/, uint256 ownerFee, /*uint256 systemFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
             availableFunds += ownerFee;
         }
         return availableFunds;
     }
 
-    function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal pure returns (uint256 delegatorFee, uint256 ownerFee) {
+    function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal pure returns (uint256 delegatorFee, uint256 ownerFee, uint256 systemFee) {
+        // detect validator slashing to transfer all rewards to treasury
+        if (validatorSnapshot.slashesCount >= MISDEMEANOR_THRESHOLD) {
+            return (ownerFee = 0, delegatorFee = 0, systemFee = validatorSnapshot.totalRewards);
+        }
         // ownerFee_(18+4-4=18) = totalRewards_18 * commissionRate_4 / 1e4
         ownerFee = validatorSnapshot.totalRewards * validatorSnapshot.commissionRate / 1e4;
         // delegatorRewards = totalRewards - ownerFee
         delegatorFee = validatorSnapshot.totalRewards - ownerFee;
+        // default system fee is zero for epoch
+        systemFee = 0;
     }
 
     function registerValidator(address validatorAddress, uint16 commissionRate) payable external override {
@@ -526,6 +547,15 @@ abstract contract Staking is IParlia, IStaking {
         _claimSystemFee();
     }
 
+    function _payToTreasury(uint256 amount) internal {
+        // increase total system fee
+        _systemFee += msg.value;
+        // once max fee threshold is reached lets do force claim
+        if (_systemFee >= TREASURY_AUTO_CLAIM_THRESHOLD) {
+            _claimSystemFee();
+        }
+    }
+
     function _claimSystemFee() internal {
         address payable payableTreasury = payable(_systemTreasury);
         payableTreasury.transfer(_systemFee);
@@ -536,11 +566,17 @@ abstract contract Staking is IParlia, IStaking {
         // make sure validator was active
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Alive, "Staking: validator not found");
-        // increase slashes for current epoch
         uint64 currentEpoch = uint64(block.number / _epochBlockInterval);
+        // increase slashes for current epoch
         ValidatorSnapshot memory currentSnapshot = _validatorSnapshots[validatorAddress][currentEpoch];
         currentSnapshot.slashesCount++;
         _validatorSnapshots[validatorAddress][currentEpoch] = currentSnapshot;
+        // if validator has a lot of misses then put it in jail for 1 week (if epoch is 1 day)
+        if (currentSnapshot.slashesCount >= FELONY_THRESHOLD) {
+            validator.status = ValidatorStatus.Jail;
+            validator.jailedBefore = currentEpoch + VALIDATOR_JAIL_EPOCH_LENGTH;
+            _validatorsMap[validatorAddress] = validator;
+        }
         // emit event
         emit ValidatorSlashed(validatorAddress, currentSnapshot.slashesCount);
     }
@@ -550,14 +586,6 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     receive() external payable {
-        // if treasury is not specified then just lock this amount on smart contract for the
-        // future needs (100 CHZ is max possible locked amount)
-        if (_systemTreasury != address(0x00)) {
-            _systemFee += msg.value;
-        }
-        // once max fee threshold is reached lets do force claim
-        if (_systemFee >= TREASURY_AUTO_CLAIM_THRESHOLD) {
-            _claimSystemFee();
-        }
+        _payToTreasury(msg.value);
     }
 }
