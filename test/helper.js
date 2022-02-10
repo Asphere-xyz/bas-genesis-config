@@ -151,8 +151,13 @@ const expectError = async (promise, text) => {
 }
 
 const extractTxCost = (executionResult) => {
-  const {receipt: {gasUsed, effectiveGasPrice}} = executionResult;
-  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(new BigNumber(effectiveGasPrice.substr(2), 16));
+  let {receipt: {gasUsed, effectiveGasPrice}} = executionResult;
+  if (typeof effectiveGasPrice === 'string') {
+    effectiveGasPrice = effectiveGasPrice.substring(2)
+  } else {
+    effectiveGasPrice = '1' // for coverage
+  }
+  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(new BigNumber(effectiveGasPrice, 16));
   return executionResult;
 }
 
