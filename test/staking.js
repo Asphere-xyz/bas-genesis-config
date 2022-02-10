@@ -9,7 +9,7 @@ const {newMockContract, expectError, advanceBlocks} = require("./helper");
 
 contract("Staking", async (accounts) => {
   const [owner, staker1, staker2, staker3, validator1, validator2, validator3, validator4, validator5] = accounts
-  it("simple delegation", async () => {
+  it("staker can do simple delegation", async () => {
     // 1 transaction = 1 block, current epoch length is 10 blocks
     const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
@@ -114,6 +114,35 @@ contract("Staking", async (accounts) => {
       value: '3000000000000000000'
     }), 'Staking: validator not found')
   });
+  it("validator rewards are well-calculated", async () => {
+    const {parlia} = await newMockContract(owner)
+    // TODO: "finish me"
+  })
+  it("no validator rewards for inactivity", async () => {
+    const {parlia} = await newMockContract(owner, {
+      epochBlockInterval: '50',
+      misdemeanorThreshold: '5',
+      felonyThreshold: '10'
+    })
+    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator2);
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+    // slash for 10 times
+    for (let i = 0; i < 5; i++) {
+      await parlia.slash(validator2, {from: validator1});
+    }
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+    // wait for the next epoch
+    assert.equal(await parlia.currentEpoch(), '0')
+    await advanceBlocks(40)
+    assert.equal(await parlia.currentEpoch(), '1')
+    // make sure fee is zero
+    const validatorFee = await parlia.getValidatorFee(validator1)
+    console.log(validatorFee.toString());
+    assert.equal(validatorFee.toString(), '0')
+  });
   it("incorrect staking amounts", async () => {
     const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
@@ -129,14 +158,6 @@ contract("Staking", async (accounts) => {
       from: staker1,
       value: '1100000000000000000'
     }), 'Staking: amount shouldn\'t have a remainder') // 1.1
-  });
-  it("validator rewards are well-calculated", async () => {
-    const {parlia} = await newMockContract(owner)
-    // TODO: "finish me"
-  })
-  it("no validator rewards for inactivity", async () => {
-    const {parlia} = await newMockContract(owner)
-    // TODO: "finish me"
   });
   it("put validator in jail after N misses", async () => {
     const {parlia} = await newMockContract(owner, {
