@@ -162,7 +162,7 @@ contract("Staking", async (accounts) => {
   })
   it("validator can be released from jail by owner", async () => {
     const {parlia} = await newMockContract(owner, {
-      epochBlockInterval: '50', // 30 blocks
+      epochBlockInterval: '50', // 50 blocks
       misdemeanorThreshold: '10', // penalty after 10 misses
       felonyThreshold: '5', // jail after 5 misses
       validatorJailEpochLength: '2', // put in jail for 2 epochs (60 blocks)
