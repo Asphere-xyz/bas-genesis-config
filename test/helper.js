@@ -16,21 +16,56 @@ const newGovernanceContract = async (owner) => {
 }
 
 const DEFAULT_MOCK_PARAMS = {
+  systemTreasury: '0x0000000000000000000000000000000000000000',
   activeValidatorsLength: '3',
   epochBlockInterval: '10',
-  systemTreasury: '0x0000000000000000000000000000000000000000',
+  misdemeanorThreshold: '50',
+  felonyThreshold: '150',
+  validatorJailEpochLength: '7',
 };
 
-const newMockContract = async (owner, params = DEFAULT_MOCK_PARAMS) => {
-  const {activeValidatorsLength, epochBlockInterval, systemTreasury} = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
+const newMockContract = async (owner, params = {}) => {
+  const {
+    systemTreasury,
+    activeValidatorsLength,
+    epochBlockInterval,
+    misdemeanorThreshold,
+    felonyThreshold,
+    validatorJailEpochLength
+  } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   const deployer = await Deployer.new([]);
   const governance = await Governance.new(owner, 1);
-  const parlia = await FakeStaking.new(activeValidatorsLength, epochBlockInterval, systemTreasury);
+  const parlia = await FakeStaking.new(systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength);
   await deployer.initManually(deployer.address, governance.address, parlia.address);
   await governance.initManually(deployer.address, governance.address, parlia.address);
   await parlia.initManually(deployer.address, governance.address, parlia.address);
   return {deployer, governance, parlia}
 }
+
+const advanceBlock = () => {
+  return new Promise((resolve, reject) => {
+    web3.currentProvider.send({
+      jsonrpc: "2.0",
+      method:  "evm_mine",
+      id:      new Date().getTime()
+    }, (err, result) => {
+      if (err) {
+        return reject(err);
+      }
+      const newBlockHash = web3.eth.getBlock("latest").hash;
+
+      return resolve(newBlockHash);
+    });
+  });
+};
+
+const advanceBlocks = async (count) => {
+  for (let i = 0; i < count; i++) {
+    await advanceBlock();
+  }
+}
+
+let proposalIndex = 0;
 
 const createAndExecuteInstantProposal = async (
   // contracts
@@ -39,10 +74,10 @@ const createAndExecuteInstantProposal = async (
   targets,
   values,
   calldatas,
-  desc,
   // sender
   sender,
 ) => {
+  const desc = `Proposal #${proposalIndex++}`;
   const currentOwner = await governance.getOwner()
   if (currentOwner === '0x0000000000000000000000000000000000000000') await governance.obtainOwnership();
   const votingPower = await governance.getVotingPower(sender)
@@ -57,28 +92,48 @@ const randomProposalDesc = () => {
 }
 
 const addValidator = async (governance, parlia, user, sender) => {
-  const abi = parlia.contract.methods.addValidator(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [parlia.address], ['0x00'], [abi], `Add ${user} validator (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [parlia.address],
+    ['0x00'],
+    [parlia.contract.methods.addValidator(user).encodeABI()],
+    sender)
 }
 
 const removeValidator = async (governance, parlia, user, sender) => {
-  const abi = parlia.contract.methods.removeValidator(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [parlia.address], ['0x00'], [abi], `Remove ${user} validator (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [parlia.address],
+    ['0x00'],
+    [parlia.contract.methods.removeValidator(user).encodeABI()],
+    sender)
 }
 
 const addDeployer = async (governance, deployer, user, sender) => {
-  const abi = deployer.contract.methods.addDeployer(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Add ${user} deployer (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [deployer.address],
+    ['0x00'],
+    [deployer.contract.methods.addDeployer(user).encodeABI()],
+    sender)
 }
 
 const removeDeployer = async (governance, deployer, user, sender) => {
-  const abi = deployer.contract.methods.removeDeployer(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Remove ${user} deployer (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [deployer.address],
+    ['0x00'],
+    [deployer.contract.methods.removeDeployer(user).encodeABI()],
+    sender)
 }
 
 const registerDeployedContract = async (governance, deployer, owner, contract, sender) => {
-  const abi = deployer.contract.methods.registerDeployedContract(owner, contract).encodeABI();
-  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Register ${contract} deployed contract (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [deployer.address],
+    ['0x00'],
+    [deployer.contract.methods.registerDeployedContract(owner, contract).encodeABI()],
+    sender)
 }
 
 const expectError = async (promise, text) => {
@@ -88,7 +143,7 @@ const expectError = async (promise, text) => {
     if (e.message.includes(text)) {
       return;
     }
-    console.error(new Error(`Unexpected error: ${text}`))
+    console.error(new Error(`Unexpected error: ${e.message}`))
   }
   console.error(new Error(`Expected error: ${text}`))
   assert.fail();
@@ -104,4 +159,6 @@ module.exports = {
   registerDeployedContract,
   createAndExecuteInstantProposal,
   expectError,
+  advanceBlock,
+  advanceBlocks,
 }

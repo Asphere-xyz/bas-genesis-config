@@ -5,13 +5,13 @@ import "./Injector.sol";
 
 abstract contract Staking is IParlia, IStaking {
 
-    uint32 public constant MISDEMEANOR_THRESHOLD = 50;
-    uint32 public constant FELONY_THRESHOLD = 150;
-    uint64 public constant VALIDATOR_JAIL_EPOCH_LENGTH = 7;
-
     uint32 public constant DEFAULT_ACTIVE_VALIDATORS_LENGTH = 22;
     uint32 public constant DEFAULT_BLOCK_TIME_SEC = 3;
     uint32 public constant DEFAULT_EPOCH_BLOCK_INTERVAL = 100;
+    uint32 public constant DEFAULT_MISDEMEANOR_THRESHOLD = 50;
+    uint32 public constant DEFAULT_FELONY_THRESHOLD = 150;
+    uint32 public constant DEFAULT_VALIDATOR_JAIL_EPOCH_LENGTH = 7;
+
     /**
      * Parlia has 100 ether limit for max fee, its better to enable auto claim
      * for the system treasury otherwise it might cause lost of funds
@@ -30,7 +30,8 @@ abstract contract Staking is IParlia, IStaking {
 
     event ValidatorAdded(address validator, address owner, uint8 status, uint16 commissionRate);
     event ValidatorRemoved(address validator);
-    event ValidatorSlashed(address validator, uint32 slashes);
+    event ValidatorSlashed(address validator, uint32 slashes, uint64 epoch);
+    event ValidatorJailed(address validator, uint64 epoch);
     event Delegated(address validator, address staker, uint256 amount, uint64 epoch);
     event Undelegated(address validator, address staker, uint256 amount, uint64 epoch);
 
@@ -74,6 +75,14 @@ abstract contract Staking is IParlia, IStaking {
         uint64 undelegateGap;
     }
 
+    struct ConsensusParams {
+        uint32 activeValidatorsLength;
+        uint32 epochBlockInterval;
+        uint32 misdemeanorThreshold;
+        uint32 felonyThreshold;
+        uint32 validatorJailEpochLength;
+    }
+
     // mapping from validator address to validator
     mapping(address => Validator) internal _validatorsMap;
     // list of all validators that are in validators mapping
@@ -83,15 +92,17 @@ abstract contract Staking is IParlia, IStaking {
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
     // consensus parameters
-    uint32 internal _activeValidatorsLength;
-    uint32 internal _epochBlockInterval;
+    ConsensusParams internal _consensusParams;
     // total system fee that is available for claim for system needs
     address internal _systemTreasury;
     uint256 internal _systemFee;
 
     constructor() {
-        _activeValidatorsLength = DEFAULT_ACTIVE_VALIDATORS_LENGTH;
-        _epochBlockInterval = DEFAULT_EPOCH_BLOCK_INTERVAL;
+        _consensusParams.activeValidatorsLength = DEFAULT_ACTIVE_VALIDATORS_LENGTH;
+        _consensusParams.epochBlockInterval = DEFAULT_EPOCH_BLOCK_INTERVAL;
+        _consensusParams.misdemeanorThreshold = DEFAULT_MISDEMEANOR_THRESHOLD;
+        _consensusParams.felonyThreshold = DEFAULT_FELONY_THRESHOLD;
+        _consensusParams.validatorJailEpochLength = DEFAULT_VALIDATOR_JAIL_EPOCH_LENGTH;
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
@@ -110,15 +121,20 @@ abstract contract Staking is IParlia, IStaking {
         address ownerAddress,
         uint8 status,
         uint256 totalDelegated,
+        uint32 slashesCount,
         uint64 changedAt,
+        uint64 jailedBefore,
         uint64 claimedAt
     ) {
         Validator memory validator = _validatorsMap[validatorAddress];
+        ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
         return (
         ownerAddress = validator.ownerAddress,
         status = uint8(validator.status),
-        totalDelegated = _totalDelegatedToValidator(validator),
+        totalDelegated = snapshot.totalDelegated * 1 gwei,
+        slashesCount = snapshot.slashesCount,
         changedAt = validator.changedAt,
+        jailedBefore = validator.jailedBefore,
         claimedAt = validator.claimedAt
         );
     }
@@ -154,8 +170,12 @@ abstract contract Staking is IParlia, IStaking {
         return epoch;
     }
 
+    function currentEpoch() external view returns (uint64) {
+        return _currentEpoch();
+    }
+
     function _currentEpoch() internal view returns (uint64) {
-        return uint64(block.number / _epochBlockInterval + 0);
+        return uint64(block.number / _consensusParams.epochBlockInterval + 0);
     }
 
     function _nextEpoch() internal view returns (uint64) {
@@ -175,7 +195,9 @@ abstract contract Staking is IParlia, IStaking {
         snapshot.commissionRate = lastModifiedSnapshot.commissionRate;
         // we must save last affected epoch for this validator to be able to restore total delegated
         // amount in the future (check condition upper)
-        validator.changedAt = epoch;
+        if (epoch > validator.changedAt) {
+            validator.changedAt = epoch;
+        }
         return snapshot;
     }
 
@@ -261,18 +283,18 @@ abstract contract Staking is IParlia, IStaking {
             revert("Staking: nothing to claim");
         }
         uint256 availableFunds = 0;
-        uint64 currentEpoch = _currentEpoch();
+        uint64 epoch = _currentEpoch();
         // process delegate queue to calculate staking rewards
         while (delegation.delegateGap < delegation.delegateQueue.length) {
             DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
-            if (delegateOp.epoch >= currentEpoch) {
+            if (delegateOp.epoch >= epoch) {
                 break;
             }
             uint256 voteChangedAtEpoch = 0;
             if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
             }
-            for (; delegateOp.epoch < currentEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+            for (; delegateOp.epoch < epoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
                 ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
@@ -286,7 +308,7 @@ abstract contract Staking is IParlia, IStaking {
         // process all items from undelegate queue
         while (delegation.undelegateGap < delegation.undelegateQueue.length) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
-            if (undelegateOp.epoch >= currentEpoch) {
+            if (undelegateOp.epoch >= epoch) {
                 break;
             }
             availableFunds += undelegateOp.amount;
@@ -301,18 +323,18 @@ abstract contract Staking is IParlia, IStaking {
     function _calcDelegatorRewardsAndPendingUndelegates(address validator, address delegator) internal view returns (uint256) {
         ValidatorDelegation memory delegation = _validatorDelegations[validator][delegator];
         uint256 availableFunds = 0;
-        uint64 currentEpoch = _currentEpoch();
+        uint64 epoch = _currentEpoch();
         // process delegate queue to calculate staking rewards
         while (delegation.delegateGap < delegation.delegateQueue.length) {
             DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
-            if (delegateOp.epoch >= currentEpoch) {
+            if (delegateOp.epoch >= epoch) {
                 break;
             }
             uint256 voteChangedAtEpoch = 0;
             if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
             }
-            for (; delegateOp.epoch < currentEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+            for (; delegateOp.epoch < epoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
                 ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
@@ -326,7 +348,7 @@ abstract contract Staking is IParlia, IStaking {
         // process all items from undelegate queue
         while (delegation.undelegateGap < delegation.undelegateQueue.length) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
-            if (undelegateOp.epoch >= currentEpoch) {
+            if (undelegateOp.epoch >= epoch) {
                 break;
             }
             availableFunds += undelegateOp.amount;
@@ -337,11 +359,10 @@ abstract contract Staking is IParlia, IStaking {
         return availableFunds;
     }
 
-    function _claimValidatorOwnerRewards(Validator storage validator) internal {
-        uint64 currentEpoch = _currentEpoch();
+    function _claimValidatorOwnerRewards(Validator storage validator, uint64 beforeEpoch) internal {
         uint256 availableFunds = 0;
         uint256 systemFee = 0;
-        for (; validator.claimedAt < currentEpoch; validator.claimedAt++) {
+        for (; validator.claimedAt < beforeEpoch; validator.claimedAt++) {
             ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator.validatorAddress][validator.claimedAt];
             (/*uint256 delegatorFee*/, uint256 ownerFee, uint256 slashingFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
             availableFunds += ownerFee;
@@ -355,10 +376,9 @@ abstract contract Staking is IParlia, IStaking {
         }
     }
 
-    function _calcValidatorOwnerRewards(Validator memory validator) internal view returns (uint256) {
-        uint64 currentEpoch = _currentEpoch();
+    function _calcValidatorOwnerRewards(Validator memory validator, uint64 beforeEpoch) internal view returns (uint256) {
         uint256 availableFunds = 0;
-        for (; validator.claimedAt < currentEpoch; validator.claimedAt++) {
+        for (; validator.claimedAt < beforeEpoch; validator.claimedAt++) {
             ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator.validatorAddress][validator.claimedAt];
             (/*uint256 delegatorFee*/, uint256 ownerFee, /*uint256 systemFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
             availableFunds += ownerFee;
@@ -366,9 +386,9 @@ abstract contract Staking is IParlia, IStaking {
         return availableFunds;
     }
 
-    function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal pure returns (uint256 delegatorFee, uint256 ownerFee, uint256 systemFee) {
+    function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal view returns (uint256 delegatorFee, uint256 ownerFee, uint256 systemFee) {
         // detect validator slashing to transfer all rewards to treasury
-        if (validatorSnapshot.slashesCount >= MISDEMEANOR_THRESHOLD) {
+        if (validatorSnapshot.slashesCount >= _consensusParams.misdemeanorThreshold) {
             return (ownerFee = 0, delegatorFee = 0, systemFee = validatorSnapshot.totalRewards);
         }
         // ownerFee_(18+4-4=18) = totalRewards_18 * commissionRate_4 / 1e4
@@ -471,7 +491,7 @@ abstract contract Staking is IParlia, IStaking {
         }
 
         // we need to select k top validators out of n
-        uint256 k = _activeValidatorsLength;
+        uint256 k = _consensusParams.activeValidatorsLength;
         if (k > n) k = n;
 
         for (uint256 i = 0; i < k; i++) {
@@ -502,8 +522,7 @@ abstract contract Staking is IParlia, IStaking {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Alive, "Staking: validator not active");
         // increase total pending rewards for validator for current epoch
-        uint64 currentEpoch = _currentEpoch();
-        ValidatorSnapshot storage currentSnapshot = _validatorSnapshots[validatorAddress][currentEpoch];
+        ValidatorSnapshot storage currentSnapshot = _validatorSnapshots[validatorAddress][_currentEpoch()];
         currentSnapshot.totalRewards += uint128(msg.value);
     }
 
@@ -512,7 +531,7 @@ abstract contract Staking is IParlia, IStaking {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
         // return validator rewards
-        return _calcValidatorOwnerRewards(validator);
+        return _calcValidatorOwnerRewards(validator, _currentEpoch());
     }
 
     function claimValidatorFee(address validatorAddress) external override {
@@ -522,7 +541,7 @@ abstract contract Staking is IParlia, IStaking {
         // only validator owner can claim deposit fee
         require(msg.sender == validator.ownerAddress, "Staking: only validator owner");
         // claim all validator fees
-        _claimValidatorOwnerRewards(validator);
+        _claimValidatorOwnerRewards(validator, _currentEpoch());
     }
 
     function getDelegatorFee(address validatorAddress) external override view returns (uint256) {
@@ -549,7 +568,7 @@ abstract contract Staking is IParlia, IStaking {
 
     function _payToTreasury(uint256 amount) internal {
         // increase total system fee
-        _systemFee += msg.value;
+        _systemFee += amount;
         // once max fee threshold is reached lets do force claim
         if (_systemFee >= TREASURY_AUTO_CLAIM_THRESHOLD) {
             _claimSystemFee();
@@ -566,19 +585,22 @@ abstract contract Staking is IParlia, IStaking {
         // make sure validator was active
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Alive, "Staking: validator not found");
-        uint64 currentEpoch = uint64(block.number / _epochBlockInterval);
+        uint64 epoch = _currentEpoch();
         // increase slashes for current epoch
-        ValidatorSnapshot memory currentSnapshot = _validatorSnapshots[validatorAddress][currentEpoch];
-        currentSnapshot.slashesCount++;
-        _validatorSnapshots[validatorAddress][currentEpoch] = currentSnapshot;
+        ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);
+        uint32 slashesCount = currentSnapshot.slashesCount + 1;
+        currentSnapshot.slashesCount = slashesCount;
+        // validator state might change, lets update it
+        _validatorsMap[validatorAddress] = validator;
         // if validator has a lot of misses then put it in jail for 1 week (if epoch is 1 day)
-        if (currentSnapshot.slashesCount >= FELONY_THRESHOLD) {
+        if (slashesCount == _consensusParams.felonyThreshold) {
+            validator.jailedBefore = _currentEpoch() + _consensusParams.validatorJailEpochLength;
             validator.status = ValidatorStatus.Jail;
-            validator.jailedBefore = currentEpoch + VALIDATOR_JAIL_EPOCH_LENGTH;
             _validatorsMap[validatorAddress] = validator;
+            emit ValidatorJailed(validatorAddress, epoch);
         }
         // emit event
-        emit ValidatorSlashed(validatorAddress, currentSnapshot.slashesCount);
+        emit ValidatorSlashed(validatorAddress, slashesCount, epoch);
     }
 
     function getSystemTreasury() external view returns (address) {

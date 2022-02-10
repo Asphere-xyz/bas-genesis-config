@@ -5,9 +5,21 @@ import "./Staking.sol";
 
 contract FakeStaking is Staking, InjectorContextHolderV1 {
 
-    constructor(uint32 activeValidatorsLength, uint32 epochBlockInterval, address systemTreasury) {
-        _activeValidatorsLength = activeValidatorsLength;
-        _epochBlockInterval = epochBlockInterval;
+    constructor(
+        address systemTreasury,
+        uint32 activeValidatorsLength,
+        uint32 epochBlockInterval,
+        uint32 misdemeanorThreshold,
+        uint32 felonyThreshold,
+        uint32 validatorJailEpochLength
+    ) {
+        // system params
+        _consensusParams.activeValidatorsLength = activeValidatorsLength;
+        _consensusParams.epochBlockInterval = epochBlockInterval;
+        _consensusParams.misdemeanorThreshold = misdemeanorThreshold;
+        _consensusParams.felonyThreshold = felonyThreshold;
+        _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
+        // treasury
         _systemTreasury = systemTreasury;
     }
 

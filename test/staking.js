@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, expectError} = require("./helper");
+const {newMockContract, expectError, advanceBlocks} = require("./helper");
 
 contract("Staking", async (accounts) => {
   const [owner, staker1, staker2, staker3, validator1, validator2, validator3, validator4, validator5] = accounts
@@ -130,4 +130,71 @@ contract("Staking", async (accounts) => {
       value: '1100000000000000000'
     }), 'Staking: amount shouldn\'t have a remainder') // 1.1
   });
+  it("validator rewards are well-calculated", async () => {
+    const {parlia} = await newMockContract(owner)
+    // TODO: "finish me"
+  })
+  it("no validator rewards for inactivity", async () => {
+    const {parlia} = await newMockContract(owner)
+    // TODO: "finish me"
+  });
+  it("put validator in jail after N misses", async () => {
+    const {parlia} = await newMockContract(owner, {
+      epochBlockInterval: '300',
+      misdemeanorThreshold: '10',
+      felonyThreshold: '20'
+    })
+    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator2);
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+    // slash for 19 times
+    for (let i = 0; i < 19; i++) {
+      await parlia.slash(validator2, {from: validator1});
+    }
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+    // slash one more time (20 total >= then felony threshold)
+    await parlia.slash(validator2, {from: validator1});
+    // status should change
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '3');
+  })
+  it("validator can be released from jail by owner", async () => {
+    const {parlia} = await newMockContract(owner, {
+      epochBlockInterval: '50', // 30 blocks
+      misdemeanorThreshold: '10', // penalty after 10 misses
+      felonyThreshold: '5', // jail after 5 misses
+      validatorJailEpochLength: '2', // put in jail for 2 epochs (60 blocks)
+    })
+    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator2);
+    // we can't release validator if its active
+    await expectError(parlia.releaseValidatorFromJail(validator2, {from: validator1}), 'Staking: validator not in jail')
+    // all validators are active
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+    // slash for 5 times
+    for (let i = 0; i < 5; i++) {
+      await parlia.slash(validator2, {from: validator1});
+    }
+    // make sure we're on 2 epoch
+    assert.equal(await parlia.currentEpoch(), '2');
+    // now validator 2 is in jail
+    let status2 = await parlia.getValidatorStatus(validator2)
+    assert.equal(status2.status.toString(), '3');
+    assert.equal(status2.jailedBefore.toString(), '4');
+    // try to release validator before jail period end
+    await expectError(parlia.releaseValidatorFromJail(validator2, {from: validator2}), 'Staking: still in jail')
+    // sleep until epoch 3 is reached
+    assert.equal(await parlia.currentEpoch(), '2');
+    await advanceBlocks(100);
+    assert.equal(await parlia.currentEpoch(), '4');
+    // now release should work
+    await expectError(parlia.releaseValidatorFromJail(validator2, {from: validator1}), 'Staking: only validator owner')
+    await parlia.releaseValidatorFromJail(validator2, {from: validator2})
+    // all validators are active
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+  })
 });

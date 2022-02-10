@@ -49,7 +49,9 @@ interface IStaking {
         address ownerAddress,
         uint8 status,
         uint256 totalDelegated,
+        uint32 slashesCount,
         uint64 changedAt,
+        uint64 jailedBefore,
         uint64 claimedAt
     );
 
