@@ -130,9 +130,10 @@ contract("Staking", async (accounts) => {
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1 ether
     // wait for the next epoch to apply fee scheme
     await waitForNextEpoch(parlia);
-    // validator get fees (1.1111 ether)
+    // check constraints
     await expectError(parlia.deposit(validator1, {from: validator1, value: '0'}), 'Staking: deposit is zero');
     await expectError(parlia.deposit(validator4, {from: validator1, value: '1000000000000000000'}), 'Staking: validator not active');
+    // validator get fees (1.1111 ether)
     await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
     await parlia.deposit(validator1, {from: validator1, value: '100000000000000000'}); // 0.1 ether
     await parlia.deposit(validator1, {from: validator1, value: '10000000000000000'}); // 0.01 ether
@@ -164,7 +165,7 @@ contract("Staking", async (accounts) => {
     assert.equal(validatorFee.toString(10), '3333300000000000');
     stakerFee = await parlia.getDelegatorFee(validator1, {from: staker1})
     assert.equal(stakerFee.toString(10), '0');
-
+    // let's claim validator fee
     let validatorOwnerBalanceBefore = new BigNumber(await web3.eth.getBalance(validator1));
     ({txCost} = extractTxCost(await parlia.claimValidatorFee(validator1, {from: validator1})));
     let validatorOwnerBalanceAfter = new BigNumber(await web3.eth.getBalance(validator1));
