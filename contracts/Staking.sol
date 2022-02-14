@@ -11,6 +11,7 @@ abstract contract Staking is IParlia, IStaking {
     uint32 public constant DEFAULT_MISDEMEANOR_THRESHOLD = 50;
     uint32 public constant DEFAULT_FELONY_THRESHOLD = 150;
     uint32 public constant DEFAULT_VALIDATOR_JAIL_EPOCH_LENGTH = 7;
+    uint32 public constant DEFAULT_UNDELEGATE_PERIOD = 0;
 
     /**
      * Parlia has 100 ether limit for max fee, its better to enable auto claim
@@ -82,6 +83,7 @@ abstract contract Staking is IParlia, IStaking {
         uint32 misdemeanorThreshold;
         uint32 felonyThreshold;
         uint32 validatorJailEpochLength;
+        uint32 undelegatePeriod;
     }
 
     // mapping from validator address to validator
@@ -104,6 +106,7 @@ abstract contract Staking is IParlia, IStaking {
         _consensusParams.misdemeanorThreshold = DEFAULT_MISDEMEANOR_THRESHOLD;
         _consensusParams.felonyThreshold = DEFAULT_FELONY_THRESHOLD;
         _consensusParams.validatorJailEpochLength = DEFAULT_VALIDATOR_JAIL_EPOCH_LENGTH;
+        _consensusParams.undelegatePeriod = DEFAULT_UNDELEGATE_PERIOD;
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
@@ -264,7 +267,7 @@ abstract contract Staking is IParlia, IStaking {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch + DEFAULT_UNDELEGATE_PERIOD}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, nextEpoch);
     }
@@ -303,7 +306,7 @@ abstract contract Staking is IParlia, IStaking {
         // process all items from undelegate queue
         while (delegation.undelegateGap < delegation.undelegateQueue.length) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
-            if (undelegateOp.epoch >= beforeEpoch) {
+            if (undelegateOp.epoch > beforeEpoch) {
                 break;
             }
             availableFunds += undelegateOp.amount;
@@ -344,7 +347,7 @@ abstract contract Staking is IParlia, IStaking {
         // process all items from undelegate queue
         while (delegation.undelegateGap < delegation.undelegateQueue.length) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
-            if (undelegateOp.epoch >= epoch) {
+            if (undelegateOp.epoch > epoch) {
                 break;
             }
             availableFunds += undelegateOp.amount;

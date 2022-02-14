@@ -77,6 +77,8 @@ contract("Staking", async (accounts) => {
     await parlia.undelegate(validator1, '1000000000000000000', {from: staker1}); // 1.0
     let result = await parlia.getValidatorStatus(validator1);
     assert.equal(result.totalDelegated.toString(), '0')
+    await waitForNextEpoch(parlia);
+    await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '3000000000000000000')
   });
   it("throw if there is nothing to claim", async () => {
     const {parlia} = await newMockContract(owner)
@@ -106,6 +108,9 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorDelegation(validator2, staker2)).delegatedAmount.toString(), '1000000000000000000')
     await parlia.undelegate(validator2, '1000000000000000000', {from: staker2})
     assert.equal((await parlia.getValidatorDelegation(validator2, staker2)).delegatedAmount.toString(), '0')
+    await waitForNextEpoch(parlia);
+    await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '0')
+    await claimDelegatorFeeAndCheck(parlia, validator2, staker2, '2000000000000000000')
   });
   it("staker can't undelegate more than delegated", async () => {
     const {parlia} = await newMockContract(owner)
@@ -131,6 +136,8 @@ contract("Staking", async (accounts) => {
     await parlia.undelegate(validator1, '1000000000000000000', {from: staker1}); // -1.0
     assert.equal((await parlia.getValidatorDelegation(validator1, staker1)).delegatedAmount.toString(), '0')
     assert.equal((await parlia.getValidatorStatus(validator1)).totalDelegated.toString(), '0')
+    await waitForNextEpoch(parlia);
+    await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '6000000000000000000')
   })
   it("active validator set depends on staked amount", async () => {
     const {parlia} = await newMockContract(owner)
