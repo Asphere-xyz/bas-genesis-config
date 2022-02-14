@@ -82,7 +82,7 @@ interface IStaking {
 
     function claimValidatorFee(address validator) external;
 
-    function getDelegatorFee(address validator) external view returns (uint256);
+    function getDelegatorFee(address validator, address delegator) external view returns (uint256);
 
     function claimDelegatorFee(address validator) external;
 

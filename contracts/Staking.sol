@@ -44,7 +44,7 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     struct ValidatorSnapshot {
-        uint128 totalRewards;
+        uint96 totalRewards;
         uint64 totalDelegated;
         uint32 slashesCount;
         uint16 commissionRate;
@@ -163,12 +163,6 @@ abstract contract Staking is IParlia, IStaking {
 
     function undelegate(address validatorAddress, uint256 amount) payable external override {
         _undelegateFrom(msg.sender, validatorAddress, amount);
-    }
-
-    function _prevEpoch() internal view returns (uint64) {
-        uint64 epoch = _currentEpoch();
-        if (epoch > 0) epoch--;
-        return epoch;
     }
 
     function currentEpoch() external view returns (uint64) {
@@ -390,7 +384,9 @@ abstract contract Staking is IParlia, IStaking {
     function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal view returns (uint256 delegatorFee, uint256 ownerFee, uint256 systemFee) {
         // detect validator slashing to transfer all rewards to treasury
         if (validatorSnapshot.slashesCount >= _consensusParams.misdemeanorThreshold) {
-            return (ownerFee = 0, delegatorFee = 0, systemFee = validatorSnapshot.totalRewards);
+            return (delegatorFee = 0, ownerFee = 0, systemFee = validatorSnapshot.totalRewards);
+        } else if (validatorSnapshot.totalDelegated == 0) {
+            return (delegatorFee = 0, ownerFee = validatorSnapshot.totalRewards, systemFee = 0);
         }
         // ownerFee_(18+4-4=18) = totalRewards_18 * commissionRate_4 / 1e4
         ownerFee = validatorSnapshot.totalRewards * validatorSnapshot.commissionRate / 1e4;
@@ -411,6 +407,7 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint64 initialStake) internal {
+        uint64 nextEpoch = _nextEpoch();
         // validator commission rate
         require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "Staking: bad commission rate");
         // init validator default params
@@ -419,16 +416,16 @@ abstract contract Staking is IParlia, IStaking {
         validator.validatorAddress = validatorAddress;
         validator.ownerAddress = validatorOwner;
         validator.status = status;
+        validator.changedAt = nextEpoch;
         _validatorsMap[validatorAddress] = validator;
-        // push initial validator snapshot at zero epoch with default params
-        _validatorSnapshots[validatorAddress][0] = ValidatorSnapshot({
-        totalRewards : 0,
-        totalDelegated : initialStake,
-        slashesCount : 0,
-        commissionRate : commissionRate
-        });
         // add new validator to array
         _validatorsList.push(validatorAddress);
+        // push initial validator snapshot at zero epoch with default params
+        _validatorSnapshots[validatorAddress][nextEpoch] = ValidatorSnapshot(0, initialStake, 0, commissionRate);
+        // delegate initial stake to validator owner
+        ValidatorDelegation storage delegation = _validatorDelegations[validatorAddress][validatorOwner];
+        require(delegation.delegateQueue.length == 0, "Staking: delegation queue is not empty");
+        delegation.delegateQueue.push(DelegationOpDelegate(initialStake, nextEpoch));
         // emit event
         emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }
@@ -490,11 +487,11 @@ abstract contract Staking is IParlia, IStaking {
         for (uint256 i = 0; i < n; i++) {
             orderedValidators[i] = _validatorsList[i];
         }
-
         // we need to select k top validators out of n
         uint256 k = _consensusParams.activeValidatorsLength;
-        if (k > n) k = n;
-
+        if (k > n) {
+            k = n;
+        }
         for (uint256 i = 0; i < k; i++) {
             uint256 nextValidator = i;
             Validator memory currentMax = _validatorsMap[orderedValidators[nextValidator]];
@@ -505,7 +502,6 @@ abstract contract Staking is IParlia, IStaking {
                     currentMax = current;
                 }
             }
-            // Swap i-th validator with new found winner
             address backup = orderedValidators[i];
             orderedValidators[i] = orderedValidators[nextValidator];
             orderedValidators[nextValidator] = backup;
@@ -523,15 +519,15 @@ abstract contract Staking is IParlia, IStaking {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Alive, "Staking: validator not active");
         // increase total pending rewards for validator for current epoch
-        ValidatorSnapshot storage currentSnapshot = _validatorSnapshots[validatorAddress][_currentEpoch()];
-        currentSnapshot.totalRewards += uint128(msg.value);
+        ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, _currentEpoch());
+        currentSnapshot.totalRewards += uint96(msg.value);
     }
 
     function getValidatorFee(address validatorAddress) external override view returns (uint256) {
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
-        // return validator rewards
+        // calc validator rewards
         return _calcValidatorOwnerRewards(validator, _currentEpoch());
     }
 
@@ -545,8 +541,8 @@ abstract contract Staking is IParlia, IStaking {
         _claimValidatorOwnerRewards(validator, _currentEpoch());
     }
 
-    function getDelegatorFee(address validatorAddress) external override view returns (uint256) {
-        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, msg.sender);
+    function getDelegatorFee(address validatorAddress, address delegatorAddress) external override view returns (uint256) {
+        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress);
     }
 
     function claimDelegatorFee(address validatorAddress) external override {
