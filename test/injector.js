@@ -3,8 +3,9 @@
 /** @function contract */
 /** @function it */
 /** @function before */
-const {newMockContract} = require("./helper");
 /** @var assert */
+
+const {newMockContract} = require("./helper");
 
 const Deployer = artifacts.require("Deployer");
 const Governance = artifacts.require("Governance");
@@ -34,6 +35,6 @@ contract("Injector", async (accounts) => {
     }
     await testInjector(Deployer, [])
     await testInjector(Governance, owner, '1')
-    await testInjector(Parlia, [])
+    await testInjector(Parlia, [], '0x0000000000000000000000000000000000000000', '0', '0', '0', '0', '0')
   })
 });

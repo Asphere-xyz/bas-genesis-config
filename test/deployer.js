@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, addDeployer, removeDeployer, registerDeployedContract} = require('./helper')
+const {newMockContract, addDeployer, removeDeployer, registerDeployedContract, newGovernanceContract, expectError} = require('./helper')
 
 contract("Deployer", async (accounts) => {
   const [owner] = accounts;
@@ -37,5 +37,35 @@ contract("Deployer", async (accounts) => {
     const [, log1] = r1.receipt.rawLogs
     assert.equal(log1.data.toLowerCase(), `0x000000000000000000000000${owner.substr(2)}0000000000000000000000000000000000000000000000000000000000000123`.toLowerCase())
     assert.equal(log1.topics[0], web3.utils.keccak256('ContractDeployed(address,address)'))
+    const contractDeployer = await deployer.getContractDeployer('0x0000000000000000000000000000000000000123');
+    assert.equal(contractDeployer.state, '1')
+    assert.equal(contractDeployer.impl, '0x0000000000000000000000000000000000000123')
+    assert.equal(contractDeployer.deployer, owner)
+  })
+  it("deployer constructor works", async () => {
+    const {deployer} = await newGovernanceContract(owner, {
+      genesisDeployers: [
+        '0x0000000000000000000000000000000000000001',
+        '0x0000000000000000000000000000000000000002',
+        '0x0000000000000000000000000000000000000003',
+      ],
+    });
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000000'), false)
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), true)
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000002'), true)
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000003'), true)
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000004'), false)
+  })
+  it("deployer can be banned and unbanned", async () => {
+    const {deployer} = await newMockContract(owner);
+    await deployer.addDeployer('0x0000000000000000000000000000000000000001');
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), true)
+    assert.equal(await deployer.isBanned('0x0000000000000000000000000000000000000001'), false)
+    await deployer.banDeployer('0x0000000000000000000000000000000000000001');
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), true)
+    assert.equal(await deployer.isBanned('0x0000000000000000000000000000000000000001'), true)
+    await deployer.unbanDeployer('0x0000000000000000000000000000000000000001');
+    assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), true)
+    assert.equal(await deployer.isBanned('0x0000000000000000000000000000000000000001'), false)
   })
 });

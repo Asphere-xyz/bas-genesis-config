@@ -5,7 +5,24 @@ import "./Staking.sol";
 
 contract Parlia is Staking, InjectorContextHolderV1 {
 
-    constructor(address[] memory validators) {
+    constructor(
+        address[] memory validators,
+        address systemTreasury,
+        uint32 activeValidatorsLength,
+        uint32 epochBlockInterval,
+        uint32 misdemeanorThreshold,
+        uint32 felonyThreshold,
+        uint32 validatorJailEpochLength
+    ) {
+        // system params
+        _consensusParams.activeValidatorsLength = activeValidatorsLength;
+        _consensusParams.epochBlockInterval = epochBlockInterval;
+        _consensusParams.misdemeanorThreshold = misdemeanorThreshold;
+        _consensusParams.felonyThreshold = felonyThreshold;
+        _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
+        // treasury
+        _systemTreasury = systemTreasury;
+        // init validators
         for (uint256 i = 0; i < validators.length; i++) {
             _addValidator(validators[i], validators[i], ValidatorStatus.Alive, 0, 0);
         }

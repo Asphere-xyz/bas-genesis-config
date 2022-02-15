@@ -4,17 +4,9 @@ const BigNumber = require("bignumber.js");
 const Deployer = artifacts.require("Deployer");
 const Governance = artifacts.require("Governance");
 const Parlia = artifacts.require("Parlia");
-const FakeStaking = artifacts.require("FakeStaking");
 
-const newGovernanceContract = async (owner) => {
-  const deployer = await Deployer.new([]);
-  const governance = await Governance.new(owner, 1);
-  const parlia = await Parlia.new([]);
-  await deployer.initManually(deployer.address, governance.address, parlia.address);
-  await governance.initManually(deployer.address, governance.address, parlia.address);
-  await parlia.initManually(deployer.address, governance.address, parlia.address);
-  return {deployer, governance, parlia}
-}
+const FakeDeployer = artifacts.require("FakeDeployer");
+const FakeStaking = artifacts.require("FakeStaking");
 
 const DEFAULT_MOCK_PARAMS = {
   systemTreasury: '0x0000000000000000000000000000000000000000',
@@ -23,24 +15,45 @@ const DEFAULT_MOCK_PARAMS = {
   misdemeanorThreshold: '50',
   felonyThreshold: '150',
   validatorJailEpochLength: '7',
+  genesisDeployers: [],
+  genesisValidators: [],
 };
 
-const newMockContract = async (owner, params = {}) => {
+const newContractUsingTypes = async (owner, params, types = {
+  Deployer: Deployer,
+  Governance: Governance,
+  Parlia: Parlia,
+}) => {
+  const {Deployer, Governance, Parlia} = types
   const {
     systemTreasury,
     activeValidatorsLength,
     epochBlockInterval,
     misdemeanorThreshold,
     felonyThreshold,
-    validatorJailEpochLength
+    validatorJailEpochLength,
+    genesisDeployers,
+    genesisValidators,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
-  const deployer = await Deployer.new([]);
+  const deployer = await Deployer.new(genesisDeployers);
   const governance = await Governance.new(owner, 1);
-  const parlia = await FakeStaking.new(systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength);
+  const parlia = await Parlia.new(genesisValidators, systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength);
   await deployer.initManually(deployer.address, governance.address, parlia.address);
   await governance.initManually(deployer.address, governance.address, parlia.address);
   await parlia.initManually(deployer.address, governance.address, parlia.address);
   return {deployer, governance, parlia}
+}
+
+const newGovernanceContract = async (owner, params = {}) => {
+  return newContractUsingTypes(owner, params);
+}
+
+const newMockContract = async (owner, params = {}) => {
+  return newContractUsingTypes(owner, params, {
+    Deployer: FakeDeployer,
+    Governance: Governance,
+    Parlia: FakeStaking,
+  });
 }
 
 const advanceBlock = () => {

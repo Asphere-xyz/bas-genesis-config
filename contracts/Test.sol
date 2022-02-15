@@ -6,6 +6,7 @@ import "./Staking.sol";
 contract FakeStaking is Staking, InjectorContextHolderV1 {
 
     constructor(
+        address[] memory validators,
         address systemTreasury,
         uint32 activeValidatorsLength,
         uint32 epochBlockInterval,
@@ -21,6 +22,10 @@ contract FakeStaking is Staking, InjectorContextHolderV1 {
         _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
         // treasury
         _systemTreasury = systemTreasury;
+        // init validators
+        for (uint256 i = 0; i < validators.length; i++) {
+            _addValidator(validators[i], validators[i], ValidatorStatus.Alive, 0, 0);
+        }
     }
 
     function addValidator(address account) external override {
