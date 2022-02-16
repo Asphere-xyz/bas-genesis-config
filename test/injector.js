@@ -35,6 +35,6 @@ contract("Injector", async (accounts) => {
     }
     await testInjector(Deployer, [])
     await testInjector(Governance, owner, '1')
-    await testInjector(Parlia, [], '0x0000000000000000000000000000000000000000', '0', '0', '0', '0', '0')
+    await testInjector(Parlia, [], '0x0000000000000000000000000000000000000000', '0', '0', '0', '0', '0', '0')
   })
 });
