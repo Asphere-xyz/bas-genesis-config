@@ -135,7 +135,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis := config.Genesis
 	// extra data
 	genesis.ExtraData = createExtraData(config.Validators)
-	genesis.Config.Parlia.Period = uint64(config.ConsensusParams.EpochBlockInterval)
+	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
 	ctor, err := newArguments("address[]").Pack(config.Deployers)
 	if err != nil {

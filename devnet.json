@@ -16,8 +16,8 @@
     "mirrorSyncBlock": 0,
     "brunoBlock": 0,
     "parlia": {
-      "period": 100,
-      "epoch": 0
+      "period": 3,
+      "epoch": 100
     }
   },
   "nonce": "0x0",
