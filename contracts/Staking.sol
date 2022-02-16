@@ -320,21 +320,20 @@ abstract contract Staking is IParlia, IStaking {
         emit Claimed(validator, delegator, availableFunds, beforeEpoch);
     }
 
-    function _calcDelegatorRewardsAndPendingUndelegates(address validator, address delegator) internal view returns (uint256) {
+    function _calcDelegatorRewardsAndPendingUndelegates(address validator, address delegator, uint64 beforeEpoch) internal view returns (uint256) {
         ValidatorDelegation memory delegation = _validatorDelegations[validator][delegator];
         uint256 availableFunds = 0;
-        uint64 epoch = _currentEpoch();
         // process delegate queue to calculate staking rewards
         while (delegation.delegateGap < delegation.delegateQueue.length) {
             DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
-            if (delegateOp.epoch >= epoch) {
+            if (delegateOp.epoch >= beforeEpoch) {
                 break;
             }
             uint256 voteChangedAtEpoch = 0;
             if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
             }
-            for (; delegateOp.epoch < epoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+            for (; delegateOp.epoch < beforeEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
                 ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
@@ -347,7 +346,7 @@ abstract contract Staking is IParlia, IStaking {
         // process all items from undelegate queue
         while (delegation.undelegateGap < delegation.undelegateQueue.length) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[delegation.undelegateGap];
-            if (undelegateOp.epoch > epoch) {
+            if (undelegateOp.epoch > beforeEpoch) {
                 break;
             }
             availableFunds += undelegateOp.amount;
@@ -534,6 +533,14 @@ abstract contract Staking is IParlia, IStaking {
         return _calcValidatorOwnerRewards(validator, _currentEpoch());
     }
 
+    function getPendingValidatorFee(address validatorAddress) external override view returns (uint256) {
+        // make sure validator exists at least
+        Validator memory validator = _validatorsMap[validatorAddress];
+        require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
+        // calc validator rewards
+        return _calcValidatorOwnerRewards(validator, _nextEpoch());
+    }
+
     function claimValidatorFee(address validatorAddress) external override {
         // make sure validator exists at least
         Validator storage validator = _validatorsMap[validatorAddress];
@@ -545,7 +552,11 @@ abstract contract Staking is IParlia, IStaking {
     }
 
     function getDelegatorFee(address validatorAddress, address delegatorAddress) external override view returns (uint256) {
-        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress);
+        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress, _currentEpoch());
+    }
+
+    function getPendingDelegatorFee(address validatorAddress, address delegatorAddress) external override view returns (uint256) {
+        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress, _nextEpoch());
     }
 
     function claimDelegatorFee(address validatorAddress) external override {
