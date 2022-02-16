@@ -15,6 +15,7 @@ const DEFAULT_MOCK_PARAMS = {
   misdemeanorThreshold: '50',
   felonyThreshold: '150',
   validatorJailEpochLength: '7',
+  undelegatePeriod: '0',
   genesisDeployers: [],
   genesisValidators: [],
 };
@@ -34,10 +35,11 @@ const newContractUsingTypes = async (owner, params, types = {
     validatorJailEpochLength,
     genesisDeployers,
     genesisValidators,
+    undelegatePeriod,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   const deployer = await Deployer.new(genesisDeployers);
   const governance = await Governance.new(owner, 1);
-  const parlia = await Parlia.new(genesisValidators, systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength);
+  const parlia = await Parlia.new(genesisValidators, systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
   await deployer.initManually(deployer.address, governance.address, parlia.address);
   await governance.initManually(deployer.address, governance.address, parlia.address);
   await parlia.initManually(deployer.address, governance.address, parlia.address);

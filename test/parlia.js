@@ -123,6 +123,7 @@ contract("Parlia", async (accounts) => {
       '50',
       '150',
       '7',
+      '0',
     );
   })
 });

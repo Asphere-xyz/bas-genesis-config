@@ -12,7 +12,8 @@ contract FakeStaking is Staking, InjectorContextHolderV1 {
         uint32 epochBlockInterval,
         uint32 misdemeanorThreshold,
         uint32 felonyThreshold,
-        uint32 validatorJailEpochLength
+        uint32 validatorJailEpochLength,
+        uint32 undelegatePeriod
     ) {
         // system params
         _consensusParams.activeValidatorsLength = activeValidatorsLength;
@@ -20,6 +21,7 @@ contract FakeStaking is Staking, InjectorContextHolderV1 {
         _consensusParams.misdemeanorThreshold = misdemeanorThreshold;
         _consensusParams.felonyThreshold = felonyThreshold;
         _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
+        _consensusParams.undelegatePeriod = undelegatePeriod;
         // treasury
         _systemTreasury = systemTreasury;
         // init validators

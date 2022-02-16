@@ -117,6 +117,7 @@ type consensusParams struct {
 	MisdemeanorThreshold     uint32
 	FelonyThreshold          uint32
 	ValidatorJailEpochLength uint32
+	UndelegatePeriod         uint32
 }
 
 type genesisConfig struct {
@@ -150,7 +151,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	if err := simulateSystemContract(genesis, governanceAddress, governanceRawArtifact, ctor); err != nil {
 		return err
 	}
-	ctor, err = newArguments("address[]", "address", "uint32", "uint32", "uint32", "uint32", "uint32").Pack(
+	ctor, err = newArguments("address[]", "address", "uint32", "uint32", "uint32", "uint32", "uint32", "uint32").Pack(
 		config.Validators,
 		config.SystemTreasury,
 		config.ConsensusParams.ActiveValidatorsLength,
@@ -158,6 +159,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.MisdemeanorThreshold,
 		config.ConsensusParams.FelonyThreshold,
 		config.ConsensusParams.ValidatorJailEpochLength,
+		config.ConsensusParams.UndelegatePeriod,
 	)
 	if err != nil {
 		return err
@@ -238,6 +240,7 @@ var devnetConfig = genesisConfig{
 		MisdemeanorThreshold:     10,
 		FelonyThreshold:          100,
 		ValidatorJailEpochLength: 1,
+		UndelegatePeriod:         0,
 	},
 	// owner of the governance
 	GovernanceOwner: common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
@@ -267,6 +270,7 @@ var testnetConfig = genesisConfig{
 		MisdemeanorThreshold:     50,    // after missing this amount of blocks per day validator losses all daily rewards (penalty)
 		FelonyThreshold:          150,   // after missing this amount of blocks per day validator goes in jail for N epochs
 		ValidatorJailEpochLength: 7,     // how many epochs validator should stay in jail (7 epochs = ~7 days)
+		UndelegatePeriod:         6,     // allow claiming funds only after 6 epochs (~7 days)
 	},
 	// owner of the governance
 	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
