@@ -111,10 +111,20 @@ func newArguments(typeNames ...string) abi.Arguments {
 	return args
 }
 
+type consensusParams struct {
+	ActiveValidatorsLength   uint32
+	EpochBlockInterval       uint32
+	MisdemeanorThreshold     uint32
+	FelonyThreshold          uint32
+	ValidatorJailEpochLength uint32
+}
+
 type genesisConfig struct {
 	Genesis         *core.Genesis
 	Deployers       []common.Address
 	Validators      []common.Address
+	SystemTreasury  common.Address
+	ConsensusParams consensusParams
 	GovernanceOwner common.Address
 	VotingPeriod    int64
 	Faucet          map[common.Address]string
@@ -123,11 +133,8 @@ type genesisConfig struct {
 func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis := config.Genesis
 	// extra data
-	if len(config.Validators) >= 3 && false {
-		genesis.ExtraData = createExtraData(config.Validators[0:3])
-	} else {
-		genesis.ExtraData = createExtraData(config.Validators)
-	}
+	genesis.ExtraData = createExtraData(config.Validators)
+	genesis.Config.Parlia.Period = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
 	ctor, err := newArguments("address[]").Pack(config.Deployers)
 	if err != nil {
@@ -143,7 +150,15 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	if err := simulateSystemContract(genesis, governanceAddress, governanceRawArtifact, ctor); err != nil {
 		return err
 	}
-	ctor, err = newArguments("address[]").Pack(config.Validators)
+	ctor, err = newArguments("address[]", "address", "uint32", "uint32", "uint32", "uint32", "uint32").Pack(
+		config.Validators,
+		config.SystemTreasury,
+		config.ConsensusParams.ActiveValidatorsLength,
+		config.ConsensusParams.EpochBlockInterval,
+		config.ConsensusParams.MisdemeanorThreshold,
+		config.ConsensusParams.FelonyThreshold,
+		config.ConsensusParams.ValidatorJailEpochLength,
+	)
 	if err != nil {
 		return err
 	}
@@ -187,7 +202,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 		BrunoBlock:          big.NewInt(0),
 		Parlia: &params.ParliaConfig{
 			Period: 3,
-			Epoch:  100,
+			// epoch length is managed by consensus params
 		},
 	}
 	return &core.Genesis{
@@ -209,17 +224,27 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 var devnetConfig = genesisConfig{
 	Genesis: defaultGenesisConfig(17242),
 	// who is able to deploy smart contract from genesis block
-	Deployers: []common.Address{},
+	Deployers: []common.Address{
+		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
+	},
 	// list of default validators
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
 	},
+	SystemTreasury: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
+	ConsensusParams: consensusParams{
+		ActiveValidatorsLength:   1,
+		EpochBlockInterval:       100,
+		MisdemeanorThreshold:     10,
+		FelonyThreshold:          100,
+		ValidatorJailEpochLength: 1,
+	},
 	// owner of the governance
-	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
-	VotingPeriod:    20, // 3 minutes
+	GovernanceOwner: common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
+	VotingPeriod:    20, // 1 minute
 	// faucet
 	Faucet: map[common.Address]string{
-		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",
+		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"): "0x21e19e0c9bab2400000",
 	},
 }
 
@@ -234,6 +259,14 @@ var testnetConfig = genesisConfig{
 		common.HexToAddress("0xa6ff33e3250cc765052ac9d7f7dfebda183c4b9b"),
 		common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
 		common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
+	},
+	SystemTreasury: common.HexToAddress(""),
+	ConsensusParams: consensusParams{
+		ActiveValidatorsLength:   25,    // suggested values are (3k+1, where k is honest validators, even better): 7, 13, 19, 25, 31...
+		EpochBlockInterval:       28800, // better to use 1 day epoch (86400/3=28800, where 3s is block time)
+		MisdemeanorThreshold:     50,    // after missing this amount of blocks per day validator losses all daily rewards (penalty)
+		FelonyThreshold:          150,   // after missing this amount of blocks per day validator goes in jail for N epochs
+		ValidatorJailEpochLength: 7,     // how many epochs validator should stay in jail (7 epochs = ~7 days)
 	},
 	// owner of the governance
 	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),

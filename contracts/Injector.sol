@@ -32,19 +32,63 @@ interface IGovernance {
 
 interface IParlia {
 
-    function isValidator(address account) external view returns (bool);
-
-    function addValidator(address account) external;
-
-    function removeValidator(address account) external;
-
     function getValidators() external view returns (address[] memory);
 
     function deposit(address validator) external payable;
 
-    function claimDepositFee(address payable validator) external;
-
     function slash(address validator) external;
+}
+
+interface IStaking {
+
+    function isValidatorAlive(address validator) external view returns (bool);
+
+    function isValidator(address validator) external view returns (bool);
+
+    function getValidatorStatus(address validator) external view returns (
+        address ownerAddress,
+        uint8 status,
+        uint256 totalDelegated,
+        uint32 slashesCount,
+        uint64 changedAt,
+        uint64 jailedBefore,
+        uint64 claimedAt
+    );
+
+    function registerValidator(address validator, uint16 commissionRate) payable external;
+
+    function addValidator(address validator) external;
+
+    function removeValidator(address validator) external;
+
+    function activateValidator(address validator) external;
+
+    function disableValidator(address validator) external;
+
+    function releaseValidatorFromJail(address validator) external;
+
+    function changeValidatorCommissionRate(address validator, uint16 commissionRate) external;
+
+    function getValidatorDelegation(address validator, address delegator) external view returns (
+        uint256 delegatedAmount,
+        uint64 atEpoch
+    );
+
+    function delegate(address validator) payable external;
+
+    function undelegate(address validator, uint256 amount) payable external;
+
+    function getValidatorFee(address validator) external view returns (uint256);
+
+    function claimValidatorFee(address validator) external;
+
+    function getDelegatorFee(address validator, address delegator) external view returns (uint256);
+
+    function claimDelegatorFee(address validator) external;
+
+    function getSystemFee() external view returns (uint256);
+
+    function claimSystemFee() external;
 }
 
 interface IVersional {
@@ -70,7 +114,7 @@ abstract contract InjectorContextHolder is IInjector, IVersional {
     IGovernance private _governance;
     IParlia private _parlia;
 
-    uint256[50 - 4] private _gap;
+    uint256[100 - 5] private _gap;
 
     function init() public whenNotInitialized virtual {
         _deployer = IDeployer(0x0000000000000000000000000000000000000010);
@@ -82,6 +126,11 @@ abstract contract InjectorContextHolder is IInjector, IVersional {
         _deployer = deployer;
         _governance = governance;
         _parlia = parlia;
+    }
+
+    modifier onlyFromCoinbase() {
+        require(msg.sender == block.coinbase && tx.origin == block.coinbase, "InjectorContextHolder: only coinbase or governance");
+        _;
     }
 
     modifier onlyFromCoinbaseOrGovernance() {

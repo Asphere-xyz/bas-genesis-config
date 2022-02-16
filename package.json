@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "compile": "truffle compile --all",
-    "test": "truffle test"
+    "test": "truffle test",
+    "coverage": "truffle run coverage",
+    "report": "WITH_GAS_REPOTER=true truffle test"
   },
   "keywords": [],
   "author": "",
@@ -13,7 +15,9 @@
   "devDependencies": {
     "@openzeppelin/contracts": "^4.4.2",
     "@truffle/hdwallet-provider": "^1.2.6",
-    "truffle": "^5.3.1"
+    "eth-gas-reporter": "^0.2.24",
+    "solidity-coverage": "^0.7.18",
+    "truffle": "^5.4.32"
   },
   "dependencies": {
     "bignumber.js": "^9.0.2",

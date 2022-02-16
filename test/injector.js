@@ -5,6 +5,8 @@
 /** @function before */
 /** @var assert */
 
+const {newMockContract} = require("./helper");
+
 const Deployer = artifacts.require("Deployer");
 const Governance = artifacts.require("Governance");
 const Parlia = artifacts.require("Parlia");
@@ -12,9 +14,7 @@ const Parlia = artifacts.require("Parlia");
 contract("Injector", async (accounts) => {
   const [owner] = accounts
   it("migration is working fine", async () => {
-    const deployer = await Deployer.deployed();
-    const governance = await Governance.deployed();
-    const parlia = await Parlia.deployed();
+    const {governance, deployer, parlia} = await newMockContract(owner);
     assert.equal(deployer.address, await deployer.getDeployer());
     assert.equal(deployer.address, await governance.getDeployer());
     assert.equal(deployer.address, await parlia.getDeployer());
@@ -35,6 +35,6 @@ contract("Injector", async (accounts) => {
     }
     await testInjector(Deployer, [])
     await testInjector(Governance, owner, '1')
-    await testInjector(Parlia, [])
+    await testInjector(Parlia, [], '0x0000000000000000000000000000000000000000', '0', '0', '0', '0', '0')
   })
 });

@@ -1,4 +1,85 @@
 /** @var web3 {Web3} */
+const BigNumber = require("bignumber.js");
+
+const Deployer = artifacts.require("Deployer");
+const Governance = artifacts.require("Governance");
+const Parlia = artifacts.require("Parlia");
+
+const FakeDeployer = artifacts.require("FakeDeployer");
+const FakeStaking = artifacts.require("FakeStaking");
+
+const DEFAULT_MOCK_PARAMS = {
+  systemTreasury: '0x0000000000000000000000000000000000000000',
+  activeValidatorsLength: '3',
+  epochBlockInterval: '10',
+  misdemeanorThreshold: '50',
+  felonyThreshold: '150',
+  validatorJailEpochLength: '7',
+  genesisDeployers: [],
+  genesisValidators: [],
+};
+
+const newContractUsingTypes = async (owner, params, types = {
+  Deployer: Deployer,
+  Governance: Governance,
+  Parlia: Parlia,
+}) => {
+  const {Deployer, Governance, Parlia} = types
+  const {
+    systemTreasury,
+    activeValidatorsLength,
+    epochBlockInterval,
+    misdemeanorThreshold,
+    felonyThreshold,
+    validatorJailEpochLength,
+    genesisDeployers,
+    genesisValidators,
+  } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
+  const deployer = await Deployer.new(genesisDeployers);
+  const governance = await Governance.new(owner, 1);
+  const parlia = await Parlia.new(genesisValidators, systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength);
+  await deployer.initManually(deployer.address, governance.address, parlia.address);
+  await governance.initManually(deployer.address, governance.address, parlia.address);
+  await parlia.initManually(deployer.address, governance.address, parlia.address);
+  return {deployer, governance, parlia}
+}
+
+const newGovernanceContract = async (owner, params = {}) => {
+  return newContractUsingTypes(owner, params);
+}
+
+const newMockContract = async (owner, params = {}) => {
+  return newContractUsingTypes(owner, params, {
+    Deployer: FakeDeployer,
+    Governance: Governance,
+    Parlia: FakeStaking,
+  });
+}
+
+const advanceBlock = () => {
+  return new Promise((resolve, reject) => {
+    web3.currentProvider.send({
+      jsonrpc: "2.0",
+      method: "evm_mine",
+      id: new Date().getTime()
+    }, (err, result) => {
+      if (err) {
+        return reject(err);
+      }
+      const newBlockHash = web3.eth.getBlock("latest").hash;
+
+      return resolve(newBlockHash);
+    });
+  });
+};
+
+const advanceBlocks = async (count) => {
+  for (let i = 0; i < count; i++) {
+    await advanceBlock();
+  }
+}
+
+let proposalIndex = 0;
 
 const createAndExecuteInstantProposal = async (
   // contracts
@@ -7,11 +88,10 @@ const createAndExecuteInstantProposal = async (
   targets,
   values,
   calldatas,
-  desc,
   // sender
   sender,
 ) => {
-  console.log(`Creating proposal: ${desc}`)
+  const desc = `Proposal #${proposalIndex++}`;
   const currentOwner = await governance.getOwner()
   if (currentOwner === '0x0000000000000000000000000000000000000000') await governance.obtainOwnership();
   const votingPower = await governance.getVotingPower(sender)
@@ -26,35 +106,96 @@ const randomProposalDesc = () => {
 }
 
 const addValidator = async (governance, parlia, user, sender) => {
-  const abi = parlia.contract.methods.addValidator(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [parlia.address], ['0x00'], [abi], `Add ${user} validator (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [parlia.address],
+    ['0x00'],
+    [parlia.contract.methods.addValidator(user).encodeABI()],
+    sender)
 }
 
 const removeValidator = async (governance, parlia, user, sender) => {
-  const abi = parlia.contract.methods.removeValidator(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [parlia.address], ['0x00'], [abi], `Add ${user} validator (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [parlia.address],
+    ['0x00'],
+    [parlia.contract.methods.removeValidator(user).encodeABI()],
+    sender)
 }
 
 const addDeployer = async (governance, deployer, user, sender) => {
-  const abi = deployer.contract.methods.addDeployer(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Add ${user} deployer (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [deployer.address],
+    ['0x00'],
+    [deployer.contract.methods.addDeployer(user).encodeABI()],
+    sender)
 }
 
 const removeDeployer = async (governance, deployer, user, sender) => {
-  const abi = deployer.contract.methods.removeDeployer(user).encodeABI()
-  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Add ${user} deployer (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [deployer.address],
+    ['0x00'],
+    [deployer.contract.methods.removeDeployer(user).encodeABI()],
+    sender)
 }
 
 const registerDeployedContract = async (governance, deployer, owner, contract, sender) => {
-  const abi = deployer.contract.methods.registerDeployedContract(owner, contract).encodeABI();
-  return createAndExecuteInstantProposal(governance, [deployer.address], ['0x00'], [abi], `Register ${contract} deployed contract (${randomProposalDesc()})`, sender)
+  return createAndExecuteInstantProposal(
+    governance,
+    [deployer.address],
+    ['0x00'],
+    [deployer.contract.methods.registerDeployedContract(owner, contract).encodeABI()],
+    sender)
+}
+
+const expectError = async (promise, text) => {
+  try {
+    await promise;
+  } catch (e) {
+    if (e.message.includes(text)) {
+      return;
+    }
+    console.error(new Error(`Unexpected error: ${e.message}`))
+  }
+  console.error(new Error(`Expected error: ${text}`))
+  assert.fail();
+}
+
+const extractTxCost = (executionResult) => {
+  let {receipt: {gasUsed, effectiveGasPrice}} = executionResult;
+  if (typeof effectiveGasPrice === 'string') {
+    effectiveGasPrice = effectiveGasPrice.substring(2)
+  } else {
+    effectiveGasPrice = '1' // for coverage
+  }
+  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(new BigNumber(effectiveGasPrice, 16));
+  return executionResult;
+}
+
+const waitForNextEpoch = async (parlia, blockStep = 1) => {
+  const currentEpoch = await parlia.currentEpoch()
+  while (true) {
+    await advanceBlocks(blockStep)
+    const nextEpoch = await parlia.currentEpoch()
+    if (`${currentEpoch}` === `${nextEpoch}`) continue;
+    break;
+  }
 }
 
 module.exports = {
+  newGovernanceContract,
+  newMockContract,
   addValidator,
   removeValidator,
   addDeployer,
   removeDeployer,
   registerDeployedContract,
-  createAndExecuteInstantProposal
+  createAndExecuteInstantProposal,
+  expectError,
+  extractTxCost,
+  waitForNextEpoch,
+  advanceBlock,
+  advanceBlocks,
 }
