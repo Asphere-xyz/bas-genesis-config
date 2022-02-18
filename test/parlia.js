@@ -5,12 +5,9 @@
 /** @function before */
 /** @var assert */
 
-const Parlia = artifacts.require("Staking");
+const {newGovernanceContract, addValidator, removeValidator} = require('./helper')
 
-const {newGovernanceContract, addValidator, removeValidator, newMockContract} = require('./helper')
-const BigNumber = require('bignumber.js');
-
-contract("Parlia", async (accounts) => {
+contract("Staking", async (accounts) => {
   const [owner, treasury] = accounts
   it("governance can add or remove validator", async () => {
     const {governance, parlia} = await newGovernanceContract(owner);
@@ -78,46 +75,14 @@ contract("Parlia", async (accounts) => {
       '0x0000000000000000000000000000000000000002',
     ])
   })
-  it("system fee is well calculated", async () => {
-    const {parlia} = await newMockContract(owner, {systemTreasury: treasury,})
-    // send 1 ether
-    await web3.eth.sendTransaction({from: owner, to: parlia.address, value: '1000000000000000000'}); // 1 ether
-    // balance and state should be 1
-    assert.equal((await web3.eth.getBalance(parlia.address)).toString(), '1000000000000000000')
-    assert.equal((await parlia.getSystemFee()).toString(), '1000000000000000000')
-    // send 1 ether
-    await web3.eth.sendTransaction({from: owner, to: parlia.address, value: '1000000000000000000'}); // 1 ether
-    // balance and state should be 2
-    assert.equal((await web3.eth.getBalance(parlia.address)).toString(), '2000000000000000000')
-    assert.equal((await parlia.getSystemFee()).toString(), '2000000000000000000')
-    // claim to treasury
-    await parlia.claimSystemFee({from: treasury});
-    // balance and state should be 0
-    assert.equal((await web3.eth.getBalance(parlia.address)).toString(), '0')
-    assert.equal((await parlia.getSystemFee()).toString(), '0')
-  })
-  it("system fee is auto claimable after 50 ether", async () => {
-    const {parlia} = await newMockContract(owner, {systemTreasury: treasury,})
-    const initialBalance = new BigNumber((await web3.eth.getBalance(treasury)).toString());
-    // send 49 ether
-    await web3.eth.sendTransaction({from: owner, to: parlia.address, value: '49000000000000000000'}); // 49 ether
-    // balance shouldn't change
-    assert.equal((await web3.eth.getBalance(treasury)).toString(), initialBalance.toString(10))
-    assert.equal((await parlia.getSystemFee()).toString(), '49000000000000000000')
-    // send 2 ether more
-    await web3.eth.sendTransaction({from: owner, to: parlia.address, value: '2000000000000000000'}); // 2 ether
-    // fee is not claimable anymore
-    assert.equal((await web3.eth.getBalance(treasury)).toString(), initialBalance.plus('51000000000000000000').toString(10))
-    assert.equal((await parlia.getSystemFee()).toString(), '0')
-  })
   it("test contract genesis creation", async () => {
-    await Parlia.new(
+    const Staking = artifacts.require("Staking");
+    await Staking.new(
       [
         '0x0000000000000000000000000000000000000001',
         '0x0000000000000000000000000000000000000002',
         '0x0000000000000000000000000000000000000003',
       ],
-      '0x0000000000000000000000000000000000000000',
       '22',
       '300',
       '50',

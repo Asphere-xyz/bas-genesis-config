@@ -7,7 +7,6 @@ contract FakeStaking is Staking {
 
     constructor(
         address[] memory validators,
-        address systemTreasury,
         uint32 activeValidatorsLength,
         uint32 epochBlockInterval,
         uint32 misdemeanorThreshold,
@@ -16,7 +15,6 @@ contract FakeStaking is Staking {
         uint32 undelegatePeriod
     ) Staking(
         validators,
-        systemTreasury,
         activeValidatorsLength,
         epochBlockInterval,
         misdemeanorThreshold,

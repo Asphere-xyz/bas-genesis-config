@@ -5,6 +5,15 @@ import "./IValidatorSet.sol";
 
 interface IStaking is IValidatorSet {
 
+    struct ConsensusParams {
+        uint32 activeValidatorsLength;
+        uint32 epochBlockInterval;
+        uint32 misdemeanorThreshold;
+        uint32 felonyThreshold;
+        uint32 validatorJailEpochLength;
+        uint32 undelegatePeriod;
+    }
+
     function isValidatorActive(address validator) external view returns (bool);
 
     function isValidator(address validator) external view returns (bool);
@@ -18,6 +27,8 @@ interface IStaking is IValidatorSet {
         uint64 jailedBefore,
         uint64 claimedAt
     );
+
+    function updateConsensusParams(ConsensusParams calldata consensusParams) external;
 
     function registerValidator(address validator, uint16 commissionRate) payable external;
 
@@ -53,10 +64,6 @@ interface IStaking is IValidatorSet {
     function getPendingDelegatorFee(address validator, address delegator) external view returns (uint256);
 
     function claimDelegatorFee(address validator) external;
-
-    function getSystemFee() external view returns (uint256);
-
-    function claimSystemFee() external;
 
     function slash(address validator) external;
 }

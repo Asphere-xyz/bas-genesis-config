@@ -51,9 +51,9 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     undelegatePeriod,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
-  const staking = await Staking.new(genesisValidators, systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
+  const staking = await Staking.new(genesisValidators, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
   const slashingIndicator = await SlashingIndicator.new();
-  const systemReward = await SystemReward.new();
+  const systemReward = await SystemReward.new(systemTreasury);
   const contractDeployer = await ContractDeployer.new(genesisDeployers);
   const governance = await Governance.new(owner, 1);
   // init them all

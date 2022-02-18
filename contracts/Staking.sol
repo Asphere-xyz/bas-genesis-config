@@ -5,19 +5,6 @@ import "./Injector.sol";
 
 contract Staking is IStaking, InjectorContextHolder {
 
-    uint32 public constant DEFAULT_ACTIVE_VALIDATORS_LENGTH = 22;
-    uint32 public constant DEFAULT_BLOCK_TIME_SEC = 3;
-    uint32 public constant DEFAULT_EPOCH_BLOCK_INTERVAL = 100;
-    uint32 public constant DEFAULT_MISDEMEANOR_THRESHOLD = 50;
-    uint32 public constant DEFAULT_FELONY_THRESHOLD = 150;
-    uint32 public constant DEFAULT_VALIDATOR_JAIL_EPOCH_LENGTH = 7;
-    uint32 public constant DEFAULT_UNDELEGATE_PERIOD = 0;
-
-    /**
-     * Parlia has 100 ether limit for max fee, its better to enable auto claim
-     * for the system treasury otherwise it might cause lost of funds
-     */
-    uint256 public constant TREASURY_AUTO_CLAIM_THRESHOLD = 50 ether;
     /**
      * Here is min/max commission rates, lets don't allow to set more than 30% of validator commission
      * Commission rate is a percents divided by 100 stored with 0 decimals as percents*100 (=pc/1e2*1e4)
@@ -36,6 +23,15 @@ contract Staking is IStaking, InjectorContextHolder {
     event Delegated(address validator, address staker, uint256 amount, uint64 epoch);
     event Undelegated(address validator, address staker, uint256 amount, uint64 epoch);
     event Claimed(address validator, address staker, uint256 amount, uint64 epoch);
+
+    event ConsensusParamsUpdated(
+        uint32 activeValidatorsLength,
+        uint32 epochBlockInterval,
+        uint32 misdemeanorThreshold,
+        uint32 felonyThreshold,
+        uint32 validatorJailEpochLength,
+        uint32 undelegatePeriod
+    );
 
     enum ValidatorStatus {
         NotFound,
@@ -77,15 +73,6 @@ contract Staking is IStaking, InjectorContextHolder {
         uint64 undelegateGap;
     }
 
-    struct ConsensusParams {
-        uint32 activeValidatorsLength;
-        uint32 epochBlockInterval;
-        uint32 misdemeanorThreshold;
-        uint32 felonyThreshold;
-        uint32 validatorJailEpochLength;
-        uint32 undelegatePeriod;
-    }
-
     // mapping from validator address to validator
     mapping(address => Validator) internal _validatorsMap;
     // list of all validators that are in validators mapping
@@ -96,13 +83,9 @@ contract Staking is IStaking, InjectorContextHolder {
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
     // consensus parameters
     ConsensusParams internal _consensusParams;
-    // total system fee that is available for claim for system needs
-    address internal _systemTreasury;
-    uint256 internal _systemFee;
 
     constructor(
         address[] memory validators,
-        address systemTreasury,
         uint32 activeValidatorsLength,
         uint32 epochBlockInterval,
         uint32 misdemeanorThreshold,
@@ -117,12 +100,24 @@ contract Staking is IStaking, InjectorContextHolder {
         _consensusParams.felonyThreshold = felonyThreshold;
         _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
         _consensusParams.undelegatePeriod = undelegatePeriod;
-        // treasury
-        _systemTreasury = systemTreasury;
         // init validators
         for (uint256 i = 0; i < validators.length; i++) {
             _addValidator(validators[i], validators[i], ValidatorStatus.Active, 0, 0);
         }
+    }
+
+    function updateConsensusParams(ConsensusParams calldata consensusParams) external onlyFromGovernance override {
+        // update consensus params
+        _consensusParams = consensusParams;
+        // emit event indicating consensus param change
+        emit ConsensusParamsUpdated(
+            consensusParams.activeValidatorsLength,
+            consensusParams.epochBlockInterval,
+            consensusParams.misdemeanorThreshold,
+            consensusParams.felonyThreshold,
+            consensusParams.validatorJailEpochLength,
+            consensusParams.undelegatePeriod
+        );
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
@@ -283,7 +278,7 @@ contract Staking is IStaking, InjectorContextHolder {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch + DEFAULT_UNDELEGATE_PERIOD}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch + _consensusParams.undelegatePeriod}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, nextEpoch);
     }
@@ -604,29 +599,8 @@ contract Staking is IStaking, InjectorContextHolder {
         _claimDelegatorRewardsAndPendingUndelegates(validatorAddress, msg.sender);
     }
 
-    function getSystemFee() external view override returns (uint256) {
-        return _systemFee;
-    }
-
-    function claimSystemFee() external override {
-        require(_systemFee > 0, "Staking: nothing to claim");
-        require(msg.sender == _systemTreasury, "Staking: only treasury");
-        _claimSystemFee();
-    }
-
     function _payToTreasury(uint256 amount) internal {
-        // increase total system fee
-        _systemFee += amount;
-        // once max fee threshold is reached lets do force claim
-        if (_systemFee >= TREASURY_AUTO_CLAIM_THRESHOLD) {
-            _claimSystemFee();
-        }
-    }
-
-    function _claimSystemFee() internal {
-        address payable payableTreasury = payable(_systemTreasury);
-        payableTreasury.transfer(_systemFee);
-        _systemFee = 0;
+        payable(address(_systemRewardContract)).transfer(amount);
     }
 
     function slash(address validatorAddress) external onlyFromCoinbaseOrSlashingIndicator onlyZeroGasPrice onlyOncePerBlock virtual override {
@@ -653,13 +627,5 @@ contract Staking is IStaking, InjectorContextHolder {
         }
         // emit event
         emit Slashed(validatorAddress, slashesCount, epoch);
-    }
-
-    function getSystemTreasury() external view returns (address) {
-        return _systemTreasury;
-    }
-
-    receive() external payable {
-        _payToTreasury(msg.value);
     }
 }
