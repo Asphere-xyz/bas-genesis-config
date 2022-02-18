@@ -5,22 +5,22 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, addDeployer, removeDeployer, newGovernanceContract, expectError} = require('./helper')
+const {newMockContract, expectError} = require('./helper')
 
 contract("ContractDeployer", async (accounts) => {
   const [owner] = accounts;
   it("add remove deployer", async () => {
-    const {governance, deployer} = await newMockContract(owner);
+    const {deployer} = await newMockContract(owner);
     assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), false)
     // add deployer
-    const r1 = await addDeployer(governance, deployer, '0x0000000000000000000000000000000000000001', owner)
-    const [, log1] = r1.receipt.rawLogs
-    assert.equal(log1.data, '0x0000000000000000000000000000000000000000000000000000000000000001')
+    const r1 = await deployer.addDeployer('0x0000000000000000000000000000000000000001')
+    assert.equal(r1.logs[0].event, 'DeployerAdded')
+    assert.equal(r1.logs[0].args.account, '0x0000000000000000000000000000000000000001')
     assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), true)
     // remove deployer
-    const r2 = await removeDeployer(governance, deployer, '0x0000000000000000000000000000000000000001', owner)
-    const [, log2] = r2.receipt.rawLogs
-    assert.equal(log2.data, '0x0000000000000000000000000000000000000000000000000000000000000001')
+    const r2 = await deployer.removeDeployer('0x0000000000000000000000000000000000000001')
+    assert.equal(r2.logs[0].event, 'DeployerRemoved')
+    assert.equal(r2.logs[0].args.account, '0x0000000000000000000000000000000000000001')
     assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), false)
   });
   it("contract deployment is not possible w/o whitelist", async () => {
@@ -37,7 +37,7 @@ contract("ContractDeployer", async (accounts) => {
     assert.equal(contractDeployer.deployer, owner)
   })
   it("deployer constructor works", async () => {
-    const {deployer} = await newGovernanceContract(owner, {
+    const {deployer} = await newMockContract(owner, {
       genesisDeployers: [
         '0x0000000000000000000000000000000000000001',
         '0x0000000000000000000000000000000000000002',

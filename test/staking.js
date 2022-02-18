@@ -392,4 +392,23 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
   })
+  it("validator can undelegate initial stake", async () => {
+    const {parlia} = await newMockContract(owner, {
+      epochBlockInterval: '50', // 50 blocks
+      undelegatePeriod: '0', // let claim in the next epoch
+    })
+    await parlia.registerValidator(validator1, '1000', {from: validator1, value: '10000000000000000000'}); // 10
+    await waitForNextEpoch(parlia);
+    let validatorStatus = await parlia.getValidatorStatus(validator1);
+    assert.equal(validatorStatus.totalDelegated, '10000000000000000000');
+    let initialStake = await parlia.getValidatorDelegation(validator1, validator1);
+    assert.equal(initialStake.delegatedAmount, '10000000000000000000');
+    await parlia.undelegate(validator1, '10000000000000000000', {from: validator1});
+    await waitForNextEpoch(parlia);
+    await claimDelegatorFeeAndCheck(parlia, validator1, validator1, '10000000000000000000');
+    validatorStatus = await parlia.getValidatorStatus(validator1);
+    assert.equal(validatorStatus.totalDelegated, '0');
+    initialStake = await parlia.getValidatorDelegation(validator1, validator1);
+    assert.equal(initialStake.delegatedAmount, '0');
+  })
 });
