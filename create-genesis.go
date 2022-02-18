@@ -27,14 +27,6 @@ type artifactData struct {
 	DeployedBytecode string `json:"deployedBytecode"`
 }
 
-func createExtraData(validators []common.Address) []byte {
-	extra := make([]byte, 32+20*len(validators)+65)
-	for i, v := range validators {
-		copy(extra[32+20*i:], v.Bytes())
-	}
-	return extra
-}
-
 type dummyChainContext struct {
 }
 
@@ -46,10 +38,13 @@ func (d *dummyChainContext) GetHeader(h common.Hash, n uint64) *types.Header {
 	return nil
 }
 
-var deployerAddress = common.HexToAddress("0x0000000000000000000000000000000000000010")
-var governanceAddress = common.HexToAddress("0x0000000000000000000000000000000000000020")
-var parliaAddress = common.HexToAddress("0x0000000000000000000000000000000000000030")
-var systemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
+func createExtraData(validators []common.Address) []byte {
+	extra := make([]byte, 32+20*len(validators)+65)
+	for i, v := range validators {
+		copy(extra[32+20*i:], v.Bytes())
+	}
+	return extra
+}
 
 func simulateSystemContract(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, constructor []byte) error {
 	artifact := &artifactData{}
@@ -90,14 +85,27 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	return nil
 }
 
-//go:embed build/contracts/Deployer.json
-var deployerRawArtifact []byte
+var stakingAddress = common.HexToAddress("0x0000000000000000000000000000000000001000")
+var slashingIndicatorAddress = common.HexToAddress("0x0000000000000000000000000000000000001001")
+var systemRewardAddress = common.HexToAddress("0x0000000000000000000000000000000000001002")
+var contractDeployerAddress = common.HexToAddress("0x0000000000000000000000000000000000007001")
+var governanceAddress = common.HexToAddress("0x0000000000000000000000000000000000007002")
+var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
+
+//go:embed build/contracts/Staking.json
+var stakingRawArtifact []byte
+
+//go:embed build/contracts/SlashingIndicator.json
+var slashingIndicatorRawArtifact []byte
+
+//go:embed build/contracts/SystemReward.json
+var systemRewardRawArtifact []byte
+
+//go:embed build/contracts/ContractDeployer.json
+var contractDeployerRawArtifact []byte
 
 //go:embed build/contracts/Governance.json
 var governanceRawArtifact []byte
-
-//go:embed build/contracts/Parlia.json
-var parliaRawArtifact []byte
 
 func newArguments(typeNames ...string) abi.Arguments {
 	var args abi.Arguments
@@ -127,8 +135,18 @@ type genesisConfig struct {
 	SystemTreasury  common.Address
 	ConsensusParams consensusParams
 	GovernanceOwner common.Address
-	VotingPeriod    int64
+	VotingPeriod    uint32
 	Faucet          map[common.Address]string
+}
+
+func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}) {
+	ctor, err := newArguments(typeNames...).Pack(params...)
+	if err != nil {
+		panic(err)
+	}
+	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor); err != nil {
+		panic(err)
+	}
 }
 
 func createGenesisConfig(config genesisConfig, targetFile string) error {
@@ -137,38 +155,28 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
-	ctor, err := newArguments("address[]").Pack(config.Deployers)
-	if err != nil {
-		return err
-	}
-	if err := simulateSystemContract(genesis, deployerAddress, deployerRawArtifact, ctor); err != nil {
-		return err
-	}
-	ctor, err = newArguments("address", "uint256").Pack(config.GovernanceOwner, big.NewInt(config.VotingPeriod))
-	if err != nil {
-		return err
-	}
-	if err := simulateSystemContract(genesis, governanceAddress, governanceRawArtifact, ctor); err != nil {
-		return err
-	}
-	ctor, err = newArguments("address[]", "address", "uint32", "uint32", "uint32", "uint32", "uint32", "uint32").Pack(
+	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint32", "uint32", "uint32", "uint32", "uint32", "uint32"}, []interface{}{
 		config.Validators,
-		config.SystemTreasury,
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
 		config.ConsensusParams.MisdemeanorThreshold,
 		config.ConsensusParams.FelonyThreshold,
 		config.ConsensusParams.ValidatorJailEpochLength,
 		config.ConsensusParams.UndelegatePeriod,
-	)
-	if err != nil {
-		return err
-	}
-	if err := simulateSystemContract(genesis, parliaAddress, parliaRawArtifact, ctor); err != nil {
-		return err
-	}
+	})
+	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{})
+	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address"}, []interface{}{
+		config.SystemTreasury,
+	})
+	invokeConstructorOrPanic(genesis, contractDeployerAddress, contractDeployerRawArtifact, []string{"address[]"}, []interface{}{
+		config.Deployers,
+	})
+	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"address", "uint32"}, []interface{}{
+		config.GovernanceOwner,
+		config.VotingPeriod,
+	})
 	// create system contract
-	genesis.Alloc[systemAddress] = core.GenesisAccount{
+	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 	}
 	// apply faucet
