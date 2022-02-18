@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 
 import "./Injector.sol";
 
-contract Governance is InjectorContextHolderV1, GovernorCountingSimple, GovernorSettings, IGovernance {
+contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSettings, IGovernance {
 
     event VotingPowerSet(address voter, uint256 power, uint256 supply);
 

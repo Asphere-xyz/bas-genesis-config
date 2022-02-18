@@ -1,11 +1,14 @@
 /** @var web3 {Web3} */
 const BigNumber = require("bignumber.js");
 
-const Deployer = artifacts.require("Deployer");
-const Governance = artifacts.require("Governance");
-const Parlia = artifacts.require("Parlia");
+const Staking = artifacts.require("Staking");
+const SlashingIndicator = artifacts.require("SlashingIndicator");
+const SystemReward = artifacts.require("SystemReward");
 
-const FakeDeployer = artifacts.require("FakeDeployer");
+const ContractDeployer = artifacts.require("ContractDeployer");
+const Governance = artifacts.require("Governance");
+
+const FakeContractDeployer = artifacts.require("FakeContractDeployer");
 const FakeStaking = artifacts.require("FakeStaking");
 
 const DEFAULT_MOCK_PARAMS = {
@@ -20,12 +23,22 @@ const DEFAULT_MOCK_PARAMS = {
   genesisValidators: [],
 };
 
-const newContractUsingTypes = async (owner, params, types = {
-  Deployer: Deployer,
+const DEFAULT_CONTRACT_TYPES = {
+  Staking: Staking,
+  SlashingIndicator: SlashingIndicator,
+  SystemReward: SystemReward,
+  ContractDeployer: ContractDeployer,
   Governance: Governance,
-  Parlia: Parlia,
-}) => {
-  const {Deployer, Governance, Parlia} = types
+};
+
+const newContractUsingTypes = async (owner, params, types = {}) => {
+  const {
+    Staking,
+    SlashingIndicator,
+    SystemReward,
+    ContractDeployer,
+    Governance
+  } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
   const {
     systemTreasury,
     activeValidatorsLength,
@@ -37,13 +50,31 @@ const newContractUsingTypes = async (owner, params, types = {
     genesisValidators,
     undelegatePeriod,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
-  const deployer = await Deployer.new(genesisDeployers);
+  // factory contracts
+  const staking = await Staking.new(genesisValidators, systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
+  const slashingIndicator = await SlashingIndicator.new();
+  const systemReward = await SystemReward.new();
+  const contractDeployer = await ContractDeployer.new(genesisDeployers);
   const governance = await Governance.new(owner, 1);
-  const parlia = await Parlia.new(genesisValidators, systemTreasury, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
-  await deployer.initManually(deployer.address, governance.address, parlia.address);
-  await governance.initManually(deployer.address, governance.address, parlia.address);
-  await parlia.initManually(deployer.address, governance.address, parlia.address);
-  return {deployer, governance, parlia}
+  // init them all
+  for (const contract of [staking, slashingIndicator, systemReward, contractDeployer, governance]) {
+    await contract.initManually(
+      staking.address,
+      slashingIndicator.address,
+      systemReward.address,
+      contractDeployer.address,
+      governance.address,
+    );
+  }
+  return {
+    staking,
+    parlia: staking,
+    slashingIndicator,
+    systemReward,
+    contractDeployer,
+    deployer: contractDeployer,
+    governance
+  }
 }
 
 const newGovernanceContract = async (owner, params = {}) => {
@@ -52,9 +83,8 @@ const newGovernanceContract = async (owner, params = {}) => {
 
 const newMockContract = async (owner, params = {}) => {
   return newContractUsingTypes(owner, params, {
-    Deployer: FakeDeployer,
-    Governance: Governance,
-    Parlia: FakeStaking,
+    Staking: FakeStaking,
+    ContractDeployer: FakeContractDeployer,
   });
 }
 
@@ -101,10 +131,6 @@ const createAndExecuteInstantProposal = async (
   const {logs: [{args: {proposalId}}]} = await governance.propose(targets, values, calldatas, desc, {from: sender})
   await governance.castVote(proposalId, 1, {from: sender})
   return await governance.execute(targets, values, calldatas, web3.utils.keccak256(desc), {from: sender},);
-}
-
-const randomProposalDesc = () => {
-  return `${(Math.random() * 10000) | 0}`
 }
 
 const addValidator = async (governance, parlia, user, sender) => {

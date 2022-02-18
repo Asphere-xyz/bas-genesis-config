@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "./Injector.sol";
 
-abstract contract Staking is IParlia, IStaking {
+contract Staking is IStaking, InjectorContextHolder {
 
     uint32 public constant DEFAULT_ACTIVE_VALIDATORS_LENGTH = 22;
     uint32 public constant DEFAULT_BLOCK_TIME_SEC = 3;
@@ -39,7 +39,7 @@ abstract contract Staking is IParlia, IStaking {
 
     enum ValidatorStatus {
         NotFound,
-        Alive,
+        Active,
         Pending,
         Jail
     }
@@ -100,13 +100,29 @@ abstract contract Staking is IParlia, IStaking {
     address internal _systemTreasury;
     uint256 internal _systemFee;
 
-    constructor() {
-        _consensusParams.activeValidatorsLength = DEFAULT_ACTIVE_VALIDATORS_LENGTH;
-        _consensusParams.epochBlockInterval = DEFAULT_EPOCH_BLOCK_INTERVAL;
-        _consensusParams.misdemeanorThreshold = DEFAULT_MISDEMEANOR_THRESHOLD;
-        _consensusParams.felonyThreshold = DEFAULT_FELONY_THRESHOLD;
-        _consensusParams.validatorJailEpochLength = DEFAULT_VALIDATOR_JAIL_EPOCH_LENGTH;
-        _consensusParams.undelegatePeriod = DEFAULT_UNDELEGATE_PERIOD;
+    constructor(
+        address[] memory validators,
+        address systemTreasury,
+        uint32 activeValidatorsLength,
+        uint32 epochBlockInterval,
+        uint32 misdemeanorThreshold,
+        uint32 felonyThreshold,
+        uint32 validatorJailEpochLength,
+        uint32 undelegatePeriod
+    ) {
+        // system params
+        _consensusParams.activeValidatorsLength = activeValidatorsLength;
+        _consensusParams.epochBlockInterval = epochBlockInterval;
+        _consensusParams.misdemeanorThreshold = misdemeanorThreshold;
+        _consensusParams.felonyThreshold = felonyThreshold;
+        _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
+        _consensusParams.undelegatePeriod = undelegatePeriod;
+        // treasury
+        _systemTreasury = systemTreasury;
+        // init validators
+        for (uint256 i = 0; i < validators.length; i++) {
+            _addValidator(validators[i], validators[i], ValidatorStatus.Active, 0, 0);
+        }
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
@@ -151,7 +167,7 @@ abstract contract Staking is IParlia, IStaking {
         require(msg.sender == validator.ownerAddress, "Staking: only validator owner");
         require(_currentEpoch() >= validator.jailedBefore, "Staking: still in jail");
         // update validator status
-        validator.status = ValidatorStatus.Alive;
+        validator.status = ValidatorStatus.Active;
         _validatorsMap[validatorAddress] = validator;
     }
 
@@ -408,6 +424,10 @@ abstract contract Staking is IParlia, IStaking {
         _addValidator(validatorAddress, validatorOwner, ValidatorStatus.Pending, commissionRate, uint64(initialStake / 1 gwei));
     }
 
+    function addValidator(address account) external onlyFromGovernance virtual override {
+        _addValidator(account, account, ValidatorStatus.Active, 0, 0);
+    }
+
     function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint64 initialStake) internal {
         uint64 nextEpoch = _nextEpoch();
         // validator commission rate
@@ -432,6 +452,10 @@ abstract contract Staking is IParlia, IStaking {
         emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }
 
+    function removeValidator(address account) external onlyFromGovernance virtual override {
+        _removeValidator(account);
+    }
+
     function _removeValidator(address account) internal {
         require(_validatorsMap[account].status != ValidatorStatus.NotFound, "Staking: validator not found");
         // find index of validator in validator set
@@ -452,16 +476,25 @@ abstract contract Staking is IParlia, IStaking {
         emit ValidatorRemoved(account);
     }
 
+    function activateValidator(address validator) external onlyFromGovernance virtual override {
+        _activateValidator(validator);
+    }
+
     function _activateValidator(address validatorAddress) internal {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(_validatorsMap[validatorAddress].status == ValidatorStatus.Pending, "Staking: not pending validator");
-        validator.status = ValidatorStatus.Alive;
+        validator.status = ValidatorStatus.Active;
         _validatorsMap[validatorAddress] = validator;
+    }
+
+
+    function disableValidator(address validator) external onlyFromGovernance virtual override {
+        _disableValidator(validator);
     }
 
     function _disableValidator(address validatorAddress) internal {
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(_validatorsMap[validatorAddress].status == ValidatorStatus.Alive, "Staking: not active validator");
+        require(_validatorsMap[validatorAddress].status == ValidatorStatus.Active, "Staking: not active validator");
         validator.status = ValidatorStatus.Pending;
         _validatorsMap[validatorAddress] = validator;
     }
@@ -475,8 +508,8 @@ abstract contract Staking is IParlia, IStaking {
         _validatorsMap[validatorAddress] = validator;
     }
 
-    function isValidatorAlive(address account) external override view returns (bool) {
-        return _validatorsMap[account].status == ValidatorStatus.Alive;
+    function isValidatorActive(address account) external override view returns (bool) {
+        return _validatorsMap[account].status == ValidatorStatus.Active;
     }
 
     function isValidator(address account) external override view returns (bool) {
@@ -515,11 +548,15 @@ abstract contract Staking is IParlia, IStaking {
         return orderedValidators;
     }
 
+    function deposit(address validatorAddress) external payable onlyFromCoinbase onlyZeroGasPrice virtual override {
+        _depositFee(validatorAddress);
+    }
+
     function _depositFee(address validatorAddress) internal {
         require(msg.value > 0, "Staking: deposit is zero");
         // make sure validator is active
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status == ValidatorStatus.Alive, "Staking: validator not active");
+        require(validator.status == ValidatorStatus.Active, "Staking: validator not active");
         // increase total pending rewards for validator for current epoch
         ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, _currentEpoch());
         currentSnapshot.totalRewards += uint96(msg.value);
@@ -592,10 +629,14 @@ abstract contract Staking is IParlia, IStaking {
         _systemFee = 0;
     }
 
+    function slash(address validatorAddress) external onlyFromCoinbaseOrSlashingIndicator onlyZeroGasPrice onlyOncePerBlock virtual override {
+        _slashValidator(validatorAddress);
+    }
+
     function _slashValidator(address validatorAddress) internal {
         // make sure validator was active
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status == ValidatorStatus.Alive, "Staking: validator not found");
+        require(validator.status == ValidatorStatus.Active, "Staking: validator not found");
         uint64 epoch = _currentEpoch();
         // increase slashes for current epoch
         ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);

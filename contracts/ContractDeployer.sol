@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "./Injector.sol";
 
-abstract contract AbstractDeployer is IDeployer, InjectorContextHolderV1 {
+contract ContractDeployer is IContractDeployer, InjectorContextHolder {
 
     event DeployerAdded(address account);
     event DeployerRemoved(address account);
@@ -12,7 +12,7 @@ abstract contract AbstractDeployer is IDeployer, InjectorContextHolderV1 {
 
     event ContractDeployed(address account, address impl);
 
-    struct ContractDeployer {
+    struct Deployer {
         bool exists;
         address account;
         bool banned;
@@ -29,8 +29,14 @@ abstract contract AbstractDeployer is IDeployer, InjectorContextHolderV1 {
         address deployer;
     }
 
-    mapping(address => ContractDeployer) private _contractDeployers;
+    mapping(address => Deployer) private _contractDeployers;
     mapping(address => SmartContract) private _smartContracts;
+
+    constructor(address[] memory deployers) {
+        for (uint256 i = 0; i < deployers.length; i++) {
+            _addDeployer(deployers[i]);
+        }
+    }
 
     function isDeployer(address account) public override view returns (bool) {
         return _contractDeployers[account].exists;
@@ -40,9 +46,13 @@ abstract contract AbstractDeployer is IDeployer, InjectorContextHolderV1 {
         return _contractDeployers[account].banned;
     }
 
+    function addDeployer(address account) public onlyFromGovernance virtual override {
+        _addDeployer(account);
+    }
+
     function _addDeployer(address account) internal {
         require(!_contractDeployers[account].exists, "Deployer: deployer already exist");
-        _contractDeployers[account] = ContractDeployer({
+        _contractDeployers[account] = Deployer({
         exists : true,
         account : account,
         banned : false
@@ -50,10 +60,18 @@ abstract contract AbstractDeployer is IDeployer, InjectorContextHolderV1 {
         emit DeployerAdded(account);
     }
 
+    function removeDeployer(address account) public onlyFromGovernance virtual override {
+        _removeDeployer(account);
+    }
+
     function _removeDeployer(address account) internal {
         require(_contractDeployers[account].exists, "Deployer: deployer doesn't exist");
         delete _contractDeployers[account];
         emit DeployerRemoved(account);
+    }
+
+    function banDeployer(address account) public onlyFromGovernance virtual override {
+        _banDeployer(account);
     }
 
     function _banDeployer(address account) internal {
@@ -70,7 +88,11 @@ abstract contract AbstractDeployer is IDeployer, InjectorContextHolderV1 {
         emit DeployerUnbanned(account);
     }
 
-    function getContractDeployer(address contractAddress) public view virtual override returns (uint8 state, address impl, address deployer) {
+    function unbanDeployer(address account) public onlyFromGovernance virtual override {
+        _unbanDeployer(account);
+    }
+
+    function getContractState(address contractAddress) external view virtual override returns (uint8 state, address impl, address deployer) {
         SmartContract memory dc = _smartContracts[contractAddress];
         state = uint8(dc.state);
         impl = dc.impl;
@@ -91,75 +113,17 @@ abstract contract AbstractDeployer is IDeployer, InjectorContextHolderV1 {
         emit ContractDeployed(deployer, impl);
     }
 
+    function registerDeployedContract(address deployer, address impl) public onlyFromCoinbase virtual override {
+        _registerDeployedContract(deployer, impl);
+    }
+
+    function checkContractActive(address impl) external view virtual override {
+        _checkContractActive(impl);
+    }
+
     function _checkContractActive(address impl) internal view {
         // check that contract is not disabled
         SmartContract memory dc = _smartContracts[impl];
         require(dc.state != ContractState.Disabled, "Deployer: contract is not enabled");
-    }
-}
-
-contract FakeDeployer is AbstractDeployer {
-
-    constructor(address[] memory deployers) {
-        for (uint256 i = 0; i < deployers.length; i++) {
-            _addDeployer(deployers[i]);
-        }
-    }
-
-    function addDeployer(address account) public override {
-        _addDeployer(account);
-    }
-
-    function removeDeployer(address account) public override {
-        _removeDeployer(account);
-    }
-
-    function banDeployer(address account) public override {
-        _banDeployer(account);
-    }
-
-    function unbanDeployer(address account) public override {
-        _unbanDeployer(account);
-    }
-
-    function registerDeployedContract(address deployer, address impl) public override {
-        _registerDeployedContract(deployer, impl);
-    }
-
-    function checkContractActive(address impl) external view override {
-        _checkContractActive(impl);
-    }
-}
-
-contract Deployer is AbstractDeployer {
-
-    constructor(address[] memory deployers) {
-        for (uint256 i = 0; i < deployers.length; i++) {
-            _addDeployer(deployers[i]);
-        }
-    }
-
-    function addDeployer(address account) public onlyFromGovernance override {
-        _addDeployer(account);
-    }
-
-    function removeDeployer(address account) public onlyFromGovernance override {
-        _removeDeployer(account);
-    }
-
-    function banDeployer(address account) public onlyFromGovernance override {
-        _banDeployer(account);
-    }
-
-    function unbanDeployer(address account) public onlyFromGovernance override {
-        _unbanDeployer(account);
-    }
-
-    function registerDeployedContract(address deployer, address impl) public onlyFromCoinbaseOrGovernance override {
-        _registerDeployedContract(deployer, impl);
-    }
-
-    function checkContractActive(address impl) external view override {
-        _checkContractActive(impl);
     }
 }

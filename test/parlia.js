@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const Parlia = artifacts.require("Parlia");
+const Parlia = artifacts.require("Staking");
 
 const {newGovernanceContract, addValidator, removeValidator, newMockContract} = require('./helper')
 const BigNumber = require('bignumber.js');

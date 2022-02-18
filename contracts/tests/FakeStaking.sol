@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "./Staking.sol";
+import "../Staking.sol";
 
-contract FakeStaking is Staking, InjectorContextHolderV1 {
+contract FakeStaking is Staking {
 
     constructor(
         address[] memory validators,
@@ -14,24 +14,20 @@ contract FakeStaking is Staking, InjectorContextHolderV1 {
         uint32 felonyThreshold,
         uint32 validatorJailEpochLength,
         uint32 undelegatePeriod
+    ) Staking(
+        validators,
+        systemTreasury,
+        activeValidatorsLength,
+        epochBlockInterval,
+        misdemeanorThreshold,
+        felonyThreshold,
+        validatorJailEpochLength,
+        undelegatePeriod
     ) {
-        // system params
-        _consensusParams.activeValidatorsLength = activeValidatorsLength;
-        _consensusParams.epochBlockInterval = epochBlockInterval;
-        _consensusParams.misdemeanorThreshold = misdemeanorThreshold;
-        _consensusParams.felonyThreshold = felonyThreshold;
-        _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
-        _consensusParams.undelegatePeriod = undelegatePeriod;
-        // treasury
-        _systemTreasury = systemTreasury;
-        // init validators
-        for (uint256 i = 0; i < validators.length; i++) {
-            _addValidator(validators[i], validators[i], ValidatorStatus.Alive, 0, 0);
-        }
     }
 
     function addValidator(address account) external override {
-        _addValidator(account, account, ValidatorStatus.Alive, 0, 0);
+        _addValidator(account, account, ValidatorStatus.Active, 0, 0);
     }
 
     function removeValidator(address account) external override {

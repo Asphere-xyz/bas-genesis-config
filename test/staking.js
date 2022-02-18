@@ -32,7 +32,7 @@ contract("Staking", async (accounts) => {
   const [owner, staker1, staker2, staker3, validator1, validator2, validator3, validator4, validator5] = accounts
   it("staker can do simple delegation", async () => {
     // 1 transaction = 1 block, current epoch length is 10 blocks
-    const {parlia} = await newMockContract(owner)
+    const {parlia} = await newMockContract(owner, {epochBlockInterval: '50'})
     await parlia.addValidator(validator1);
     let result = await parlia.getValidatorDelegation(validator1, staker1);
     assert.equal(result.delegatedAmount.toString(), '0')

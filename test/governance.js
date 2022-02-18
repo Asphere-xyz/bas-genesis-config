@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, newGovernanceContract} = require("./helper");
+const {newMockContract} = require("./helper");
 
 contract("Governance", async (accounts) => {
   const [owner, voter] = accounts

@@ -5,9 +5,9 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, addDeployer, removeDeployer, registerDeployedContract, newGovernanceContract, expectError} = require('./helper')
+const {newMockContract, addDeployer, removeDeployer, newGovernanceContract, expectError} = require('./helper')
 
-contract("Deployer", async (accounts) => {
+contract("ContractDeployer", async (accounts) => {
   const [owner] = accounts;
   it("add remove deployer", async () => {
     const {governance, deployer} = await newMockContract(owner);
@@ -24,20 +24,14 @@ contract("Deployer", async (accounts) => {
     assert.equal(await deployer.isDeployer('0x0000000000000000000000000000000000000001'), false)
   });
   it("contract deployment is not possible w/o whitelist", async () => {
-    const {governance, deployer} = await newMockContract(owner);
-    try {
-      await registerDeployedContract(governance, deployer, owner, '0x0000000000000000000000000000000000000123', owner);
-      assert.fail()
-    } catch (e) {
-      assert.equal(e.message.includes('Deployer: deployer is not allowed'), true)
-    }
+    const {deployer} = await newMockContract(owner);
+    // try to register w/o whitelist
+    await expectError(deployer.registerDeployedContract(owner, '0x0000000000000000000000000000000000000123'), 'Deployer: deployer is not allowed');
     // let owner be a deployer
-    await addDeployer(governance, deployer, owner, owner)
-    const r1 = await registerDeployedContract(governance, deployer, owner, '0x0000000000000000000000000000000000000123', owner);
-    const [, log1] = r1.receipt.rawLogs
-    assert.equal(log1.data.toLowerCase(), `0x000000000000000000000000${owner.substr(2)}0000000000000000000000000000000000000000000000000000000000000123`.toLowerCase())
-    assert.equal(log1.topics[0], web3.utils.keccak256('ContractDeployed(address,address)'))
-    const contractDeployer = await deployer.getContractDeployer('0x0000000000000000000000000000000000000123');
+    await deployer.addDeployer(owner)
+    const r1 = await deployer.registerDeployedContract(owner, '0x0000000000000000000000000000000000000123');
+    assert.equal(r1.logs[0].event, 'ContractDeployed')
+    const contractDeployer = await deployer.getContractState('0x0000000000000000000000000000000000000123');
     assert.equal(contractDeployer.state, '1')
     assert.equal(contractDeployer.impl, '0x0000000000000000000000000000000000000123')
     assert.equal(contractDeployer.deployer, owner)

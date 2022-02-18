@@ -7,34 +7,34 @@
 
 const {newMockContract} = require("./helper");
 
-const Deployer = artifacts.require("Deployer");
+const Deployer = artifacts.require("ContractDeployer");
 const Governance = artifacts.require("Governance");
-const Parlia = artifacts.require("Parlia");
+const Staking = artifacts.require("Staking");
 
 contract("Injector", async (accounts) => {
   const [owner] = accounts
   it("migration is working fine", async () => {
-    const {governance, deployer, parlia} = await newMockContract(owner);
-    assert.equal(deployer.address, await deployer.getDeployer());
-    assert.equal(deployer.address, await governance.getDeployer());
-    assert.equal(deployer.address, await parlia.getDeployer());
-    assert.equal(governance.address, await deployer.getGovernance());
-    assert.equal(governance.address, await governance.getGovernance());
-    assert.equal(governance.address, await parlia.getGovernance());
-    assert.equal(parlia.address, await deployer.getParlia());
-    assert.equal(parlia.address, await governance.getParlia());
-    assert.equal(parlia.address, await parlia.getParlia());
+    const {staking, slashingIndicator, systemReward, contractDeployer, governance} = await newMockContract(owner);
+    for (const contract of [staking]) {
+      assert.equal(staking.address, await contract.getStaking());
+      assert.equal(slashingIndicator.address, await contract.getSlashingIndicator());
+      assert.equal(systemReward.address, await contract.getSystemReward());
+      assert.equal(contractDeployer.address, await contract.getContractDeployer());
+      assert.equal(governance.address, await contract.getGovernance());
+    }
   });
   it("consensus init is working", async () => {
     const testInjector = async (classType, ...args) => {
       const deployer = await classType.new(...args);
       await deployer.init()
-      assert.equal(await deployer.getDeployer(), '0x0000000000000000000000000000000000000010')
-      assert.equal(await deployer.getGovernance(), '0x0000000000000000000000000000000000000020')
-      assert.equal(await deployer.getParlia(), '0x0000000000000000000000000000000000000030')
+      assert.equal(await deployer.getStaking(), '0x0000000000000000000000000000000000001000')
+      assert.equal(await deployer.getSlashingIndicator(), '0x0000000000000000000000000000000000001001')
+      assert.equal(await deployer.getSystemReward(), '0x0000000000000000000000000000000000001002')
+      assert.equal(await deployer.getContractDeployer(), '0x0000000000000000000000000000000000007001')
+      assert.equal(await deployer.getGovernance(), '0x0000000000000000000000000000000000007002')
     }
     await testInjector(Deployer, [])
     await testInjector(Governance, owner, '1')
-    await testInjector(Parlia, [], '0x0000000000000000000000000000000000000000', '0', '0', '0', '0', '0', '0')
+    await testInjector(Staking, [], '0x0000000000000000000000000000000000000000', '0', '0', '0', '0', '0', '0')
   })
 });
