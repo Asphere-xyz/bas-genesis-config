@@ -19,8 +19,9 @@ contract ContractDeployer is IContractDeployer, InjectorContextHolder {
     }
 
     enum ContractState {
-        Disabled,
-        Enabled
+        NotFound,
+        Enabled,
+        Disabled
     }
 
     struct SmartContract {
