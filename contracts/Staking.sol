@@ -106,6 +106,10 @@ contract Staking is IStaking, InjectorContextHolder {
         }
     }
 
+    function getConsensusParams() external view override returns (ConsensusParams memory) {
+        return _consensusParams;
+    }
+
     function updateConsensusParams(ConsensusParams calldata consensusParams) external onlyFromGovernance override {
         // update consensus params
         _consensusParams = consensusParams;
@@ -143,6 +147,28 @@ contract Staking is IStaking, InjectorContextHolder {
     ) {
         Validator memory validator = _validatorsMap[validatorAddress];
         ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
+        return (
+        ownerAddress = validator.ownerAddress,
+        status = uint8(validator.status),
+        totalDelegated = snapshot.totalDelegated * 1 gwei,
+        slashesCount = snapshot.slashesCount,
+        changedAt = validator.changedAt,
+        jailedBefore = validator.jailedBefore,
+        claimedAt = validator.claimedAt
+        );
+    }
+
+    function getValidatorStatusAtEpoch(address validatorAddress, uint64 epoch) external view returns (
+        address ownerAddress,
+        uint8 status,
+        uint256 totalDelegated,
+        uint32 slashesCount,
+        uint64 changedAt,
+        uint64 jailedBefore,
+        uint64 claimedAt
+    ) {
+        Validator memory validator = _validatorsMap[validatorAddress];
+        ValidatorSnapshot memory snapshot = _touchValidatorSnapshotImmutable(validator, epoch);
         return (
         ownerAddress = validator.ownerAddress,
         status = uint8(validator.status),
@@ -207,6 +233,21 @@ contract Staking is IStaking, InjectorContextHolder {
         if (epoch > validator.changedAt) {
             validator.changedAt = epoch;
         }
+        return snapshot;
+    }
+
+    function _touchValidatorSnapshotImmutable(Validator memory validator, uint64 epoch) internal view returns (ValidatorSnapshot memory) {
+        ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][epoch];
+        // if snapshot is already initialized then just return it
+        if (snapshot.totalDelegated > 0) {
+            return snapshot;
+        }
+        // find previous snapshot to copy parameters from it
+        ValidatorSnapshot memory lastModifiedSnapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
+        // last modified snapshot might store zero value, for first delegation it might happen and its not critical
+        snapshot.totalDelegated = lastModifiedSnapshot.totalDelegated;
+        snapshot.commissionRate = lastModifiedSnapshot.commissionRate;
+        // return existing or new snapshot
         return snapshot;
     }
 
@@ -504,14 +545,21 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function isValidatorActive(address account) external override view returns (bool) {
-        return _validatorsMap[account].status == ValidatorStatus.Active;
+        if (_validatorsMap[account].status != ValidatorStatus.Active) {
+            return false;
+        }
+        address[] memory topValidators = _getValidators();
+        for (uint256 i = 0; i < topValidators.length; i++) {
+            if (topValidators[i] == account) return true;
+        }
+        return false;
     }
 
     function isValidator(address account) external override view returns (bool) {
         return _validatorsMap[account].status != ValidatorStatus.NotFound;
     }
 
-    function getValidators() external view override returns (address[] memory) {
+    function _getValidators() internal view returns (address[] memory) {
         uint256 n = _validatorsList.length;
         address[] memory orderedValidators = new address[](n);
         for (uint256 i = 0; i < n; i++) {
@@ -541,6 +589,10 @@ contract Staking is IStaking, InjectorContextHolder {
             mstore(orderedValidators, k)
         }
         return orderedValidators;
+    }
+
+    function getValidators() external view override returns (address[] memory) {
+        return _getValidators();
     }
 
     function deposit(address validatorAddress) external payable onlyFromCoinbase onlyZeroGasPrice virtual override {

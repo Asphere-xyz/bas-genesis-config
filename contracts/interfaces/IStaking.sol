@@ -28,6 +28,18 @@ interface IStaking is IValidatorSet {
         uint64 claimedAt
     );
 
+    function getValidatorStatusAtEpoch(address validator, uint64 epoch) external view returns (
+        address ownerAddress,
+        uint8 status,
+        uint256 totalDelegated,
+        uint32 slashesCount,
+        uint64 changedAt,
+        uint64 jailedBefore,
+        uint64 claimedAt
+    );
+
+    function getConsensusParams() external view returns (ConsensusParams memory);
+
     function updateConsensusParams(ConsensusParams calldata consensusParams) external;
 
     function registerValidator(address validator, uint16 commissionRate) payable external;
