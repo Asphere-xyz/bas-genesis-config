@@ -75,6 +75,8 @@ contract Staking is IStaking, InjectorContextHolder {
 
     // mapping from validator address to validator
     mapping(address => Validator) internal _validatorsMap;
+    // mapping from validator owner to validator address
+    mapping(address => address) internal _validatorOwners;
     // list of all validators that are in validators mapping
     address[] internal _validatorsList;
     // mapping with stakers to validators at epoch (validator -> delegator -> delegation)
@@ -178,6 +180,10 @@ contract Staking is IStaking, InjectorContextHolder {
         jailedBefore = validator.jailedBefore,
         claimedAt = validator.claimedAt
         );
+    }
+
+    function getValidatorByOwner(address owner) external view override returns (address) {
+        return _validatorOwners[owner];
     }
 
     function releaseValidatorFromJail(address validatorAddress) external {
@@ -476,6 +482,9 @@ contract Staking is IStaking, InjectorContextHolder {
         validator.status = status;
         validator.changedAt = nextEpoch;
         _validatorsMap[validatorAddress] = validator;
+        // save validator owner
+        require(_validatorOwners[validatorOwner] == address(0x00), "Staking: owner already in use");
+        _validatorOwners[validatorOwner] = validatorAddress;
         // add new validator to array
         _validatorsList.push(validatorAddress);
         // push initial validator snapshot at zero epoch with default params
@@ -493,7 +502,8 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _removeValidator(address account) internal {
-        require(_validatorsMap[account].status != ValidatorStatus.NotFound, "Staking: validator not found");
+        Validator memory validator = _validatorsMap[account];
+        require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
         // find index of validator in validator set
         int256 indexOf = - 1;
         for (uint256 i = 0; i < _validatorsList.length; i++) {
@@ -508,7 +518,9 @@ contract Staking is IStaking, InjectorContextHolder {
         }
         _validatorsList.pop();
         // remove from validators map
+        delete _validatorOwners[validator.ownerAddress];
         delete _validatorsMap[account];
+        // emit event about it
         emit ValidatorRemoved(account);
     }
 

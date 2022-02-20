@@ -43,7 +43,8 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
         return _validatorVotingPowerAt(account, blockNumber);
     }
 
-    function _validatorVotingPowerAt(address validator, uint256 blockNumber) internal view returns (uint256) {
+    function _validatorVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
+        address validator = _stakingContract.getValidatorByOwner(validatorOwner);
         // only active validators can vote
         if (!_stakingContract.isValidatorActive(validator)) {
             return 0;

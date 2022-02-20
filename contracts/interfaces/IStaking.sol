@@ -38,6 +38,8 @@ interface IStaking is IValidatorSet {
         uint64 claimedAt
     );
 
+    function getValidatorByOwner(address owner) external view returns (address);
+
     function getConsensusParams() external view returns (ConsensusParams memory);
 
     function updateConsensusParams(ConsensusParams calldata consensusParams) external;
