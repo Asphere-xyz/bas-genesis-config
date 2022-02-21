@@ -135,7 +135,7 @@ contract Staking is IStaking, InjectorContextHolder {
             return (delegatedAmount = 0, atEpoch = 0);
         }
         DelegationOpDelegate memory snapshot = delegation.delegateQueue[delegation.delegateQueue.length - 1];
-        return (delegatedAmount = snapshot.amount * 1 gwei, atEpoch = snapshot.epoch);
+        return (delegatedAmount = uint256(snapshot.amount) * 1 gwei, atEpoch = snapshot.epoch);
     }
 
     function getValidatorStatus(address validatorAddress) external view override returns (
@@ -152,7 +152,7 @@ contract Staking is IStaking, InjectorContextHolder {
         return (
         ownerAddress = validator.ownerAddress,
         status = uint8(validator.status),
-        totalDelegated = snapshot.totalDelegated * 1 gwei,
+        totalDelegated = uint256(snapshot.totalDelegated) * 1 gwei,
         slashesCount = snapshot.slashesCount,
         changedAt = validator.changedAt,
         jailedBefore = validator.jailedBefore,
@@ -174,7 +174,7 @@ contract Staking is IStaking, InjectorContextHolder {
         return (
         ownerAddress = validator.ownerAddress,
         status = uint8(validator.status),
-        totalDelegated = snapshot.totalDelegated * 1 gwei,
+        totalDelegated = uint256(snapshot.totalDelegated) * 1 gwei,
         slashesCount = snapshot.slashesCount,
         changedAt = validator.changedAt,
         jailedBefore = validator.jailedBefore,
@@ -200,7 +200,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _totalDelegatedToValidator(Validator memory validator) internal view returns (uint256) {
         ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
-        return snapshot.totalDelegated * 1 gwei;
+        return uint256(snapshot.totalDelegated) * 1 gwei;
     }
 
     function delegate(address validatorAddress) payable external override {
