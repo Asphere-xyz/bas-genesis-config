@@ -230,7 +230,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 }
 
 var devnetConfig = genesisConfig{
-	Genesis: defaultGenesisConfig(17242),
+	Genesis: defaultGenesisConfig(1337),
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{
 		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
