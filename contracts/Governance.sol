@@ -9,46 +9,64 @@ import "./Injector.sol";
 
 contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSettings, IGovernance {
 
-    event VotingPowerSet(address voter, uint256 power, uint256 supply);
+    uint256 internal _instantVotingPeriod;
 
-    address private _owner;
-    mapping(address => uint256) private _votingPower;
-    uint256 private _votingSupply;
-
-    constructor(address owner, uint256 _votingPeriod) Governor("Chiliz Governance") GovernorSettings(0, _votingPeriod, 0) {
-        _owner = owner;
-    }
-
-    function getOwner() external view returns (address) {
-        return _owner;
-    }
-
-    function getVotingPower(address voter) external view returns (uint256) {
-        return _votingPower[voter];
+    constructor(uint256 _votingPeriod) Governor("Chiliz Governance") GovernorSettings(0, _votingPeriod, 0) {
     }
 
     function getVotingSupply() external view returns (uint256) {
-        return _votingSupply;
+        return _votingSupply(block.number);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == _owner, "Governance: only owner");
-        _;
+    function proposeWithCustomVotingPeriod(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description,
+        uint256 customVotingPeriod
+    ) public returns (uint256) {
+        _instantVotingPeriod = customVotingPeriod;
+        uint256 proposalId = propose(targets, values, calldatas, description);
+        _instantVotingPeriod = 0;
+        return proposalId;
     }
 
-    function setVotingPower(address voter, uint256 votingPower) external onlyOwner {
-        uint256 votingPowerBefore = _votingPower[voter];
-        _votingPower[voter] = votingPower;
-        _votingSupply = _votingSupply + votingPower - votingPowerBefore;
-        emit VotingPowerSet(voter, votingPower, _votingSupply);
+    function votingPeriod() public view override(IGovernor, GovernorSettings) returns (uint256) {
+        // let us re-defined voting period for proposers
+        if (_instantVotingPeriod != 0) {
+            return _instantVotingPeriod;
+        }
+        return GovernorSettings.votingPeriod();
     }
 
-    function getVotes(address account, uint256 /*blockNumber*/) public view override returns (uint256) {
-        return _votingPower[account];
+    function getVotes(address account, uint256 blockNumber) public view override returns (uint256) {
+        return _validatorVotingPowerAt(account, blockNumber);
     }
 
-    function quorum(uint256 /*blockNumber*/) public view override returns (uint256) {
-        return _votingSupply * 2 / 3;
+    function _validatorVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
+        address validator = _stakingContract.getValidatorByOwner(validatorOwner);
+        // only active validators can vote
+        if (!_stakingContract.isValidatorActive(validator)) {
+            return 0;
+        }
+        // find validator votes at block number
+        uint64 epoch = uint64(blockNumber / _stakingContract.getConsensusParams().epochBlockInterval);
+        (,,uint256 totalDelegated,,,,) = _stakingContract.getValidatorStatusAtEpoch(validator, epoch);
+        // use total delegated amount is a voting power
+        return totalDelegated;
+    }
+
+    function _votingSupply(uint256 blockNumber) internal view returns (uint256 votingSupply) {
+        address[] memory validators = _stakingContract.getValidators();
+        for (uint256 i = 0; i < validators.length; i++) {
+            votingSupply += _validatorVotingPowerAt(validators[i], blockNumber);
+        }
+        return votingSupply;
+    }
+
+    function quorum(uint256 blockNumber) public view override returns (uint256) {
+        uint256 votingSupply = _votingSupply(blockNumber);
+        return votingSupply * 2 / 3;
     }
 
     function votingDelay() public view override(IGovernor, GovernorSettings) returns (uint256) {
@@ -57,9 +75,5 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
 
     function proposalThreshold() public view virtual override(Governor, GovernorSettings) returns (uint256) {
         return GovernorSettings.proposalThreshold();
-    }
-
-    function votingPeriod() public view override(IGovernor, GovernorSettings) returns (uint256) {
-        return GovernorSettings.votingPeriod();
     }
 }

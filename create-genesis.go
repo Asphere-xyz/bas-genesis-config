@@ -134,8 +134,7 @@ type genesisConfig struct {
 	Validators      []common.Address
 	SystemTreasury  common.Address
 	ConsensusParams consensusParams
-	GovernanceOwner common.Address
-	VotingPeriod    uint32
+	VotingPeriod    int64
 	Faucet          map[common.Address]string
 }
 
@@ -171,9 +170,8 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	invokeConstructorOrPanic(genesis, contractDeployerAddress, contractDeployerRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
 	})
-	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"address", "uint32"}, []interface{}{
-		config.GovernanceOwner,
-		config.VotingPeriod,
+	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
+		big.NewInt(config.VotingPeriod),
 	})
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
@@ -251,8 +249,7 @@ var devnetConfig = genesisConfig{
 		UndelegatePeriod:         0,
 	},
 	// owner of the governance
-	GovernanceOwner: common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
-	VotingPeriod:    20, // 1 minute
+	VotingPeriod: 20, // 1 minute
 	// faucet
 	Faucet: map[common.Address]string{
 		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"): "0x21e19e0c9bab2400000", // dmitry
@@ -283,8 +280,7 @@ var testnetConfig = genesisConfig{
 		UndelegatePeriod:         6,     // allow claiming funds only after 6 epochs (~7 days)
 	},
 	// owner of the governance
-	GovernanceOwner: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
-	VotingPeriod:    60, // 3 minutes
+	VotingPeriod: 60, // 3 minutes
 	// faucet
 	Faucet: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",    // governance

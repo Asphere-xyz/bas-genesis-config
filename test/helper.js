@@ -55,7 +55,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   const slashingIndicator = await SlashingIndicator.new();
   const systemReward = await SystemReward.new(systemTreasury);
   const contractDeployer = await ContractDeployer.new(genesisDeployers);
-  const governance = await Governance.new(owner, 1);
+  const governance = await Governance.new(1);
   // init them all
   for (const contract of [staking, slashingIndicator, systemReward, contractDeployer, governance]) {
     await contract.initManually(
@@ -75,10 +75,6 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     deployer: contractDeployer,
     governance
   }
-}
-
-const newGovernanceContract = async (owner, params = {}) => {
-  return newContractUsingTypes(owner, params);
 }
 
 const newMockContract = async (owner, params = {}) => {
@@ -109,73 +105,6 @@ const advanceBlocks = async (count) => {
   for (let i = 0; i < count; i++) {
     await advanceBlock();
   }
-}
-
-let proposalIndex = 0;
-
-const createAndExecuteInstantProposal = async (
-  // contracts
-  governance,
-  // proposal
-  targets,
-  values,
-  calldatas,
-  // sender
-  sender,
-) => {
-  const desc = `Proposal #${proposalIndex++}`;
-  const currentOwner = await governance.getOwner()
-  if (currentOwner === '0x0000000000000000000000000000000000000000') await governance.obtainOwnership();
-  const votingPower = await governance.getVotingPower(sender)
-  if (votingPower.toString() === '0') await governance.setVotingPower(sender, '1000', {from: sender})
-  const {logs: [{args: {proposalId}}]} = await governance.propose(targets, values, calldatas, desc, {from: sender})
-  await governance.castVote(proposalId, 1, {from: sender})
-  return await governance.execute(targets, values, calldatas, web3.utils.keccak256(desc), {from: sender},);
-}
-
-const addValidator = async (governance, parlia, user, sender) => {
-  return createAndExecuteInstantProposal(
-    governance,
-    [parlia.address],
-    ['0x00'],
-    [parlia.contract.methods.addValidator(user).encodeABI()],
-    sender)
-}
-
-const removeValidator = async (governance, parlia, user, sender) => {
-  return createAndExecuteInstantProposal(
-    governance,
-    [parlia.address],
-    ['0x00'],
-    [parlia.contract.methods.removeValidator(user).encodeABI()],
-    sender)
-}
-
-const addDeployer = async (governance, deployer, user, sender) => {
-  return createAndExecuteInstantProposal(
-    governance,
-    [deployer.address],
-    ['0x00'],
-    [deployer.contract.methods.addDeployer(user).encodeABI()],
-    sender)
-}
-
-const removeDeployer = async (governance, deployer, user, sender) => {
-  return createAndExecuteInstantProposal(
-    governance,
-    [deployer.address],
-    ['0x00'],
-    [deployer.contract.methods.removeDeployer(user).encodeABI()],
-    sender)
-}
-
-const registerDeployedContract = async (governance, deployer, owner, contract, sender) => {
-  return createAndExecuteInstantProposal(
-    governance,
-    [deployer.address],
-    ['0x00'],
-    [deployer.contract.methods.registerDeployedContract(owner, contract).encodeABI()],
-    sender)
 }
 
 const expectError = async (promise, text) => {
@@ -213,14 +142,7 @@ const waitForNextEpoch = async (parlia, blockStep = 1) => {
 }
 
 module.exports = {
-  newGovernanceContract,
   newMockContract,
-  addValidator,
-  removeValidator,
-  addDeployer,
-  removeDeployer,
-  registerDeployedContract,
-  createAndExecuteInstantProposal,
   expectError,
   extractTxCost,
   waitForNextEpoch,
