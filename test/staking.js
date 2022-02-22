@@ -411,4 +411,11 @@ contract("Staking", async (accounts) => {
     initialStake = await parlia.getValidatorDelegation(validator1, validator1);
     assert.equal(initialStake.delegatedAmount, '0');
   })
+  it("validator owner can be changed by existing owner", async () => {
+    const {parlia} = await newMockContract(owner);
+    await parlia.addValidator(validator1);
+    assert.equal(await parlia.getValidatorByOwner(validator1), validator1);
+    await parlia.changeValidatorOwner(validator1, owner, {from: validator1});
+    assert.equal(await parlia.getValidatorByOwner(owner), validator1);
+  })
 });

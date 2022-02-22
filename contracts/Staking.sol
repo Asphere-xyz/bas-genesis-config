@@ -16,10 +16,14 @@ contract Staking is IStaking, InjectorContextHolder {
     uint16 internal constant COMMISSION_RATE_MIN_VALUE = 0; // 0%
     uint16 internal constant COMMISSION_RATE_MAX_VALUE = 3000; // 30%
 
-    event ValidatorAdded(address validator, address owner, uint8 status, uint16 commissionRate);
-    event ValidatorRemoved(address validator);
+    // validator events
+    event Added(address validator, address owner, uint8 status, uint16 commissionRate);
+    event Modified(address validator, address owner, uint8 status, uint16 commissionRate);
+    event Removed(address validator);
+    event OwnerClaimed(address validator, uint256 amount, uint64 epoch);
     event Slashed(address validator, uint32 slashes, uint64 epoch);
     event Jailed(address validator, uint64 epoch);
+    // staker events
     event Delegated(address validator, address staker, uint256 amount, uint64 epoch);
     event Undelegated(address validator, address staker, uint256 amount, uint64 epoch);
     event Claimed(address validator, address staker, uint256 amount, uint64 epoch);
@@ -182,7 +186,7 @@ contract Staking is IStaking, InjectorContextHolder {
         );
     }
 
-    function getValidatorByOwner(address owner) external view override returns (address) {
+        function getValidatorByOwner(address owner) external view override returns (address) {
         return _validatorOwners[owner];
     }
 
@@ -429,6 +433,7 @@ contract Staking is IStaking, InjectorContextHolder {
         if (systemFee > 0) {
             _payToTreasury(systemFee);
         }
+        emit OwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
     }
 
     function _calcValidatorOwnerRewards(Validator memory validator, uint64 beforeEpoch) internal view returns (uint256) {
@@ -494,7 +499,7 @@ contract Staking is IStaking, InjectorContextHolder {
         require(delegation.delegateQueue.length == 0, "Staking: delegation queue is not empty");
         delegation.delegateQueue.push(DelegationOpDelegate(initialStake, nextEpoch));
         // emit event
-        emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
+        emit Added(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }
 
     function removeValidator(address account) external onlyFromGovernance virtual override {
@@ -521,7 +526,7 @@ contract Staking is IStaking, InjectorContextHolder {
         delete _validatorOwners[validator.ownerAddress];
         delete _validatorsMap[account];
         // emit event about it
-        emit ValidatorRemoved(account);
+        emit Removed(account);
     }
 
     function activateValidator(address validator) external onlyFromGovernance virtual override {
@@ -554,6 +559,18 @@ contract Staking is IStaking, InjectorContextHolder {
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
         snapshot.commissionRate = commissionRate;
         _validatorsMap[validatorAddress] = validator;
+        emit Modified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), commissionRate);
+    }
+
+    function changeValidatorOwner(address validatorAddress, address newOwner) external override {
+        Validator memory validator = _validatorsMap[validatorAddress];
+        require(validator.ownerAddress == msg.sender, "Staking: only existing owner");
+        delete _validatorOwners[validator.ownerAddress];
+        validator.ownerAddress = newOwner;
+        _validatorOwners[newOwner] = validatorAddress;
+        _validatorsMap[validatorAddress] = validator;
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        emit Modified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
     function isValidatorActive(address account) external override view returns (bool) {
@@ -664,7 +681,7 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _payToTreasury(uint256 amount) internal {
-        payable(address(_systemRewardContract)).call{value: amount}("");
+        payable(address(_systemRewardContract)).call{value : amount}("");
     }
 
     function slash(address validatorAddress) external onlyFromCoinbaseOrSlashingIndicator onlyZeroGasPrice onlyOncePerBlock virtual override {

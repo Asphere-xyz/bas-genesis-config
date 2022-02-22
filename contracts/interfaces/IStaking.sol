@@ -58,6 +58,8 @@ interface IStaking is IValidatorSet {
 
     function changeValidatorCommissionRate(address validator, uint16 commissionRate) external;
 
+    function changeValidatorOwner(address validator, address newOwner) external;
+
     function getValidatorDelegation(address validator, address delegator) external view returns (
         uint256 delegatedAmount,
         uint64 atEpoch
