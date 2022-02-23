@@ -18,7 +18,8 @@ contract("Governance", async (accounts) => {
       [deployer.address],
       ['0x00'],
       [deployer.contract.methods.addDeployer(owner).encodeABI()],
-      'Whitelist new deployer')
+      'Whitelist new deployer',
+      {from: validator1})
     const {proposalId} = r1.logs[0].args
     assert.equal(r1.logs[0].event, 'ProposalCreated')
     const descriptionHash = web3.utils.keccak256('Whitelist new deployer')
@@ -41,7 +42,8 @@ contract("Governance", async (accounts) => {
       [deployer.address],
       ['0x00'],
       [deployer.contract.methods.addDeployer(owner).encodeABI()],
-      'Whitelist new deployer')
+      'Whitelist new deployer',
+      {from: owner1})
     const {proposalId} = r1.logs[0].args
     assert.equal(r1.logs[0].event, 'ProposalCreated')
     const descriptionHash = web3.utils.keccak256('Whitelist new deployer')

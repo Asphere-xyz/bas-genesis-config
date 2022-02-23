@@ -682,7 +682,8 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _payToTreasury(uint256 amount) internal {
-        payable(address(_systemRewardContract)).call{value : amount}("");
+        (bool success,) = payable(address(_systemRewardContract)).call{value : amount}("");
+        require(success, "Staking: failed to send to treasury");
     }
 
     function slash(address validatorAddress) external onlyFromCoinbaseOrSlashingIndicator onlyZeroGasPrice onlyOncePerBlock virtual override {

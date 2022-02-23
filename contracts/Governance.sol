@@ -24,11 +24,26 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
         bytes[] memory calldatas,
         string memory description,
         uint256 customVotingPeriod
-    ) public returns (uint256) {
+    ) public virtual onlyValidatorOwner returns (uint256) {
         _instantVotingPeriod = customVotingPeriod;
         uint256 proposalId = propose(targets, values, calldatas, description);
         _instantVotingPeriod = 0;
         return proposalId;
+    }
+
+    function propose(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        string memory description
+    ) public virtual override onlyValidatorOwner returns (uint256) {
+        return Governor.propose(targets, values, calldatas, description);
+    }
+
+    modifier onlyValidatorOwner() {
+        address validatorAddress = _stakingContract.getValidatorByOwner(msg.sender);
+        require(_stakingContract.isValidatorActive(validatorAddress), "Governance: only validator owner");
+        _;
     }
 
     function votingPeriod() public view override(IGovernor, GovernorSettings) returns (uint256) {
