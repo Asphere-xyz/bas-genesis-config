@@ -5,12 +5,12 @@ import "./Injector.sol";
 
 contract ContractDeployer is IContractDeployer, InjectorContextHolder {
 
-    event DeployerAdded(address account);
-    event DeployerRemoved(address account);
-    event DeployerBanned(address account);
-    event DeployerUnbanned(address account);
+    event DeployerAdded(address indexed account);
+    event DeployerRemoved(address indexed account);
+    event DeployerBanned(address indexed account);
+    event DeployerUnbanned(address indexed account);
 
-    event ContractDeployed(address account, address impl);
+    event ContractDeployed(address indexed account, address impl);
 
     struct Deployer {
         bool exists;

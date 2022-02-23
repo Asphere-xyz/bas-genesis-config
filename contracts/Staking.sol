@@ -17,16 +17,16 @@ contract Staking is IStaking, InjectorContextHolder {
     uint16 internal constant COMMISSION_RATE_MAX_VALUE = 3000; // 30%
 
     // validator events
-    event Added(address validator, address owner, uint8 status, uint16 commissionRate);
-    event Modified(address validator, address owner, uint8 status, uint16 commissionRate);
-    event Removed(address validator);
-    event OwnerClaimed(address validator, uint256 amount, uint64 epoch);
-    event Slashed(address validator, uint32 slashes, uint64 epoch);
-    event Jailed(address validator, uint64 epoch);
+    event Added(address indexed validator, address owner, uint8 status, uint16 commissionRate);
+    event Modified(address indexed validator, address owner, uint8 status, uint16 commissionRate);
+    event Removed(address indexed validator);
+    event OwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
+    event Slashed(address indexed validator, uint32 slashes, uint64 epoch);
+    event Jailed(address indexed validator, uint64 epoch);
     // staker events
-    event Delegated(address validator, address staker, uint256 amount, uint64 epoch);
-    event Undelegated(address validator, address staker, uint256 amount, uint64 epoch);
-    event Claimed(address validator, address staker, uint256 amount, uint64 epoch);
+    event Delegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
+    event Undelegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
+    event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
 
     event ConsensusParamsUpdated(
         uint32 activeValidatorsLength,
@@ -117,6 +117,8 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function updateConsensusParams(ConsensusParams calldata consensusParams) external onlyFromGovernance override {
+        // some params can't be changed
+        require(consensusParams.epochBlockInterval == _consensusParams.epochBlockInterval);
         // update consensus params
         _consensusParams = consensusParams;
         // emit event indicating consensus param change
