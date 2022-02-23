@@ -186,7 +186,7 @@ contract Staking is IStaking, InjectorContextHolder {
         );
     }
 
-        function getValidatorByOwner(address owner) external view override returns (address) {
+    function getValidatorByOwner(address owner) external view override returns (address) {
         return _validatorOwners[owner];
     }
 
@@ -556,6 +556,7 @@ contract Staking is IStaking, InjectorContextHolder {
         require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "Staking: bad commission rate");
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
+        require(validator.ownerAddress == msg.sender, "Staking: only validator owner");
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
         snapshot.commissionRate = commissionRate;
         _validatorsMap[validatorAddress] = validator;
@@ -564,7 +565,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function changeValidatorOwner(address validatorAddress, address newOwner) external override {
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.ownerAddress == msg.sender, "Staking: only existing owner");
+        require(validator.ownerAddress == msg.sender, "Staking: only validator owner");
         delete _validatorOwners[validator.ownerAddress];
         validator.ownerAddress = newOwner;
         _validatorOwners[newOwner] = validatorAddress;

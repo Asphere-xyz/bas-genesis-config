@@ -415,7 +415,13 @@ contract("Staking", async (accounts) => {
     const {parlia} = await newMockContract(owner);
     await parlia.addValidator(validator1);
     assert.equal(await parlia.getValidatorByOwner(validator1), validator1);
+    await expectError(parlia.changeValidatorOwner(validator1, owner, {from: validator2}), 'Staking: only validator owner');
     await parlia.changeValidatorOwner(validator1, owner, {from: validator1});
     assert.equal(await parlia.getValidatorByOwner(owner), validator1);
   })
+  it("only validator owner can change commission rate", async () => {
+    const {parlia} = await newMockContract(owner);
+    await parlia.addValidator(validator1);
+    await expectError(parlia.changeValidatorCommissionRate(validator1, '0', {from: validator2}), 'Staking: only validator owner');
+  });
 });
