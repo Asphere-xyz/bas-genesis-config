@@ -57,7 +57,7 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     struct DelegationOpUndelegate {
-        uint256 amount;
+        uint64 amount;
         uint64 epoch;
     }
 
@@ -285,7 +285,7 @@ contract Staking is IStaking, InjectorContextHolder {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch + _chainConfigContract.getUndelegatePeriod()}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint64(amount / 1 gwei), epoch : nextEpoch + _chainConfigContract.getUndelegatePeriod()}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, nextEpoch);
     }
@@ -327,7 +327,7 @@ contract Staking is IStaking, InjectorContextHolder {
             if (undelegateOp.epoch > beforeEpoch) {
                 break;
             }
-            availableFunds += undelegateOp.amount;
+            availableFunds += uint64(undelegateOp.amount) * 1 gwei;
             delete delegation.undelegateQueue[delegation.undelegateGap];
             ++delegation.undelegateGap;
         }
@@ -367,7 +367,7 @@ contract Staking is IStaking, InjectorContextHolder {
             if (undelegateOp.epoch > beforeEpoch) {
                 break;
             }
-            availableFunds += undelegateOp.amount;
+            availableFunds += uint256(undelegateOp.amount) * 1 gwei;
             ++delegation.undelegateGap;
         }
         // return available for claim funds
