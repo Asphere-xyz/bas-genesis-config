@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "./interfaces/IChainConfig.sol";
 import "./interfaces/IEvmHooks.sol";
 import "./interfaces/IContractDeployer.sol";
 import "./interfaces/IGovernance.sol";
@@ -22,8 +23,9 @@ abstract contract InjectorContextHolder is IInjector {
     // CCv2 defined contracts
     IContractDeployer internal _contractDeployerContract;
     IGovernance internal _governanceContract;
+    IChainConfig internal _chainConfigContract;
 
-    uint256[100 - 7] private __gap;
+    uint256[100 - 8] private __reserved;
 
     function init() public whenNotInitialized virtual {
         // BSC compatible addresses
@@ -33,6 +35,7 @@ abstract contract InjectorContextHolder is IInjector {
         // CCv2 defined addresses
         _contractDeployerContract = IContractDeployer(0x0000000000000000000000000000000000007001);
         _governanceContract = IGovernance(0x0000000000000000000000000000000000007002);
+        _chainConfigContract = IChainConfig(0x0000000000000000000000000000000000007003);
     }
 
     function initManually(
@@ -40,13 +43,15 @@ abstract contract InjectorContextHolder is IInjector {
         ISlashingIndicator slashingIndicatorContract,
         ISystemReward systemRewardContract,
         IContractDeployer deployerContract,
-        IGovernance governanceContract
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract
     ) public whenNotInitialized {
         _stakingContract = stakingContract;
         _slashingIndicatorContract = slashingIndicatorContract;
         _systemRewardContract = systemRewardContract;
         _contractDeployerContract = deployerContract;
         _governanceContract = governanceContract;
+        _chainConfigContract = chainConfigContract;
     }
 
     modifier onlyFromCoinbase() {
@@ -86,23 +91,27 @@ abstract contract InjectorContextHolder is IInjector {
         _operatingBlock = block.number;
     }
 
-    function getStaking() external view returns (IStaking) {
+    function getStaking() public view returns (IStaking) {
         return _stakingContract;
     }
 
-    function getSlashingIndicator() external view returns (ISlashingIndicator) {
+    function getSlashingIndicator() public view returns (ISlashingIndicator) {
         return _slashingIndicatorContract;
     }
 
-    function getSystemReward() external view returns (ISystemReward) {
+    function getSystemReward() public view returns (ISystemReward) {
         return _systemRewardContract;
     }
 
-    function getContractDeployer() external view returns (IContractDeployer) {
+    function getContractDeployer() public view returns (IContractDeployer) {
         return _contractDeployerContract;
     }
 
-    function getGovernance() external view returns (IGovernance) {
+    function getGovernance() public view returns (IGovernance) {
         return _governanceContract;
+    }
+
+    function getChainConfig() public view returns (IChainConfig) {
+        return _chainConfigContract;
     }
 }

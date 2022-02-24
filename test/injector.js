@@ -10,20 +10,22 @@ const {newMockContract} = require("./helper");
 const Deployer = artifacts.require("ContractDeployer");
 const Governance = artifacts.require("Governance");
 const Staking = artifacts.require("Staking");
+const ChainConfig = artifacts.require("ChainConfig");
 
 contract("Injector", async (accounts) => {
   const [owner] = accounts
   it("migration is working fine", async () => {
-    const {staking, slashingIndicator, systemReward, contractDeployer, governance} = await newMockContract(owner);
+    const {staking, slashingIndicator, systemReward, contractDeployer, governance, chainConfig} = await newMockContract(owner);
     for (const contract of [staking]) {
       assert.equal(staking.address, await contract.getStaking());
       assert.equal(slashingIndicator.address, await contract.getSlashingIndicator());
       assert.equal(systemReward.address, await contract.getSystemReward());
       assert.equal(contractDeployer.address, await contract.getContractDeployer());
       assert.equal(governance.address, await contract.getGovernance());
+      assert.equal(chainConfig.address, await contract.getChainConfig());
     }
   });
-  it("consensus init is working", async () => {
+  it("consensus init is working properly", async () => {
     const testInjector = async (classType, ...args) => {
       const deployer = await classType.new(...args);
       await deployer.init()
@@ -35,6 +37,7 @@ contract("Injector", async (accounts) => {
     }
     await testInjector(Deployer, [])
     await testInjector(Governance, '1')
-    await testInjector(Staking, [], '0', '0', '0', '0', '0', '0')
+    await testInjector(Staking, [])
+    await testInjector(ChainConfig, '0', '0', '0', '0', '0', '0')
   })
 });

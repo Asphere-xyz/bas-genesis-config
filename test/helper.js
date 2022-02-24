@@ -1,6 +1,7 @@
 /** @var web3 {Web3} */
 const BigNumber = require("bignumber.js");
 
+const ChainConfig = artifacts.require("ChainConfig");
 const Staking = artifacts.require("Staking");
 const SlashingIndicator = artifacts.require("SlashingIndicator");
 const SystemReward = artifacts.require("SystemReward");
@@ -24,6 +25,7 @@ const DEFAULT_MOCK_PARAMS = {
 };
 
 const DEFAULT_CONTRACT_TYPES = {
+  ChainConfig: ChainConfig,
   Staking: Staking,
   SlashingIndicator: SlashingIndicator,
   SystemReward: SystemReward,
@@ -33,6 +35,7 @@ const DEFAULT_CONTRACT_TYPES = {
 
 const newContractUsingTypes = async (owner, params, types = {}) => {
   const {
+    ChainConfig,
     Staking,
     SlashingIndicator,
     SystemReward,
@@ -51,19 +54,21 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     undelegatePeriod,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
-  const staking = await Staking.new(genesisValidators, activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
+  const staking = await Staking.new(genesisValidators);
   const slashingIndicator = await SlashingIndicator.new();
   const systemReward = await SystemReward.new(systemTreasury);
   const contractDeployer = await ContractDeployer.new(genesisDeployers);
   const governance = await Governance.new(1);
+  const chainConfig = await ChainConfig.new(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
   // init them all
-  for (const contract of [staking, slashingIndicator, systemReward, contractDeployer, governance]) {
+  for (const contract of [chainConfig, staking, slashingIndicator, systemReward, contractDeployer, governance]) {
     await contract.initManually(
       staking.address,
       slashingIndicator.address,
       systemReward.address,
       contractDeployer.address,
       governance.address,
+      chainConfig.address,
     );
   }
   return {
@@ -73,7 +78,9 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     systemReward,
     contractDeployer,
     deployer: contractDeployer,
-    governance
+    governance,
+    chainConfig,
+    config: chainConfig,
   }
 }
 

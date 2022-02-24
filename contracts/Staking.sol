@@ -28,15 +28,6 @@ contract Staking is IStaking, InjectorContextHolder {
     event Undelegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
     event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
 
-    event ConsensusParamsUpdated(
-        uint32 activeValidatorsLength,
-        uint32 epochBlockInterval,
-        uint32 misdemeanorThreshold,
-        uint32 felonyThreshold,
-        uint32 validatorJailEpochLength,
-        uint32 undelegatePeriod
-    );
-
     enum ValidatorStatus {
         NotFound,
         Active,
@@ -87,49 +78,12 @@ contract Staking is IStaking, InjectorContextHolder {
     mapping(address => mapping(address => ValidatorDelegation)) internal _validatorDelegations;
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
-    // consensus parameters
-    ConsensusParams internal _consensusParams;
 
-    constructor(
-        address[] memory validators,
-        uint32 activeValidatorsLength,
-        uint32 epochBlockInterval,
-        uint32 misdemeanorThreshold,
-        uint32 felonyThreshold,
-        uint32 validatorJailEpochLength,
-        uint32 undelegatePeriod
-    ) {
-        // system params
-        _consensusParams.activeValidatorsLength = activeValidatorsLength;
-        _consensusParams.epochBlockInterval = epochBlockInterval;
-        _consensusParams.misdemeanorThreshold = misdemeanorThreshold;
-        _consensusParams.felonyThreshold = felonyThreshold;
-        _consensusParams.validatorJailEpochLength = validatorJailEpochLength;
-        _consensusParams.undelegatePeriod = undelegatePeriod;
+    constructor(address[] memory validators) {
         // init validators
         for (uint256 i = 0; i < validators.length; i++) {
-            _addValidator(validators[i], validators[i], ValidatorStatus.Active, 0, 0);
+            _addValidator(validators[i], validators[i], ValidatorStatus.Active, 0, 0, 0);
         }
-    }
-
-    function getConsensusParams() external view override returns (ConsensusParams memory) {
-        return _consensusParams;
-    }
-
-    function updateConsensusParams(ConsensusParams calldata consensusParams) external onlyFromGovernance override {
-        // some params can't be changed
-        require(consensusParams.epochBlockInterval == _consensusParams.epochBlockInterval);
-        // update consensus params
-        _consensusParams = consensusParams;
-        // emit event indicating consensus param change
-        emit ConsensusParamsUpdated(
-            consensusParams.activeValidatorsLength,
-            consensusParams.epochBlockInterval,
-            consensusParams.misdemeanorThreshold,
-            consensusParams.felonyThreshold,
-            consensusParams.validatorJailEpochLength,
-            consensusParams.undelegatePeriod
-        );
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
@@ -222,7 +176,7 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _currentEpoch() internal view returns (uint64) {
-        return uint64(block.number / _consensusParams.epochBlockInterval + 0);
+        return uint64(block.number / _chainConfigContract.getEpochBlockInterval() + 0);
     }
 
     function _nextEpoch() internal view returns (uint64) {
@@ -331,7 +285,7 @@ contract Staking is IStaking, InjectorContextHolder {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch + _consensusParams.undelegatePeriod}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : amount, epoch : nextEpoch + _chainConfigContract.getUndelegatePeriod()}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, nextEpoch);
     }
@@ -450,7 +404,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal view returns (uint256 delegatorFee, uint256 ownerFee, uint256 systemFee) {
         // detect validator slashing to transfer all rewards to treasury
-        if (validatorSnapshot.slashesCount >= _consensusParams.misdemeanorThreshold) {
+        if (validatorSnapshot.slashesCount >= _chainConfigContract.getMisdemeanorThreshold()) {
             return (delegatorFee = 0, ownerFee = 0, systemFee = validatorSnapshot.totalRewards);
         } else if (validatorSnapshot.totalDelegated == 0) {
             return (delegatorFee = 0, ownerFee = validatorSnapshot.totalRewards, systemFee = 0);
@@ -470,15 +424,14 @@ contract Staking is IStaking, InjectorContextHolder {
         require(initialStake >= 1 ether, "Staking: amount too low");
         require(initialStake % 1 ether == 0, "Staking: amount shouldn't have a remainder");
         // add new pending validator
-        _addValidator(validatorAddress, validatorOwner, ValidatorStatus.Pending, commissionRate, uint64(initialStake / 1 gwei));
+        _addValidator(validatorAddress, validatorOwner, ValidatorStatus.Pending, commissionRate, uint64(initialStake / 1 gwei), _nextEpoch());
     }
 
     function addValidator(address account) external onlyFromGovernance virtual override {
-        _addValidator(account, account, ValidatorStatus.Active, 0, 0);
+        _addValidator(account, account, ValidatorStatus.Active, 0, 0, _nextEpoch());
     }
 
-    function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint64 initialStake) internal {
-        uint64 nextEpoch = _nextEpoch();
+    function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint64 initialStake, uint64 sinceEpoch) internal {
         // validator commission rate
         require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "Staking: bad commission rate");
         // init validator default params
@@ -487,7 +440,7 @@ contract Staking is IStaking, InjectorContextHolder {
         validator.validatorAddress = validatorAddress;
         validator.ownerAddress = validatorOwner;
         validator.status = status;
-        validator.changedAt = nextEpoch;
+        validator.changedAt = sinceEpoch;
         _validatorsMap[validatorAddress] = validator;
         // save validator owner
         require(_validatorOwners[validatorOwner] == address(0x00), "Staking: owner already in use");
@@ -495,11 +448,11 @@ contract Staking is IStaking, InjectorContextHolder {
         // add new validator to array
         _validatorsList.push(validatorAddress);
         // push initial validator snapshot at zero epoch with default params
-        _validatorSnapshots[validatorAddress][nextEpoch] = ValidatorSnapshot(0, initialStake, 0, commissionRate);
+        _validatorSnapshots[validatorAddress][sinceEpoch] = ValidatorSnapshot(0, initialStake, 0, commissionRate);
         // delegate initial stake to validator owner
         ValidatorDelegation storage delegation = _validatorDelegations[validatorAddress][validatorOwner];
         require(delegation.delegateQueue.length == 0, "Staking: delegation queue is not empty");
-        delegation.delegateQueue.push(DelegationOpDelegate(initialStake, nextEpoch));
+        delegation.delegateQueue.push(DelegationOpDelegate(initialStake, sinceEpoch));
         // emit event
         emit Added(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }
@@ -598,7 +551,7 @@ contract Staking is IStaking, InjectorContextHolder {
             orderedValidators[i] = _validatorsList[i];
         }
         // we need to select k top validators out of n
-        uint256 k = _consensusParams.activeValidatorsLength;
+        uint256 k = _chainConfigContract.getActiveValidatorsLength();
         if (k > n) {
             k = n;
         }
@@ -704,8 +657,8 @@ contract Staking is IStaking, InjectorContextHolder {
         // validator state might change, lets update it
         _validatorsMap[validatorAddress] = validator;
         // if validator has a lot of misses then put it in jail for 1 week (if epoch is 1 day)
-        if (slashesCount == _consensusParams.felonyThreshold) {
-            validator.jailedBefore = _currentEpoch() + _consensusParams.validatorJailEpochLength;
+        if (slashesCount == _chainConfigContract.getFelonyThreshold()) {
+            validator.jailedBefore = _currentEpoch() + _chainConfigContract.getValidatorJailEpochLength();
             validator.status = ValidatorStatus.Jail;
             _validatorsMap[validatorAddress] = validator;
             emit Jailed(validatorAddress, epoch);

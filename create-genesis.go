@@ -77,6 +77,9 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		Storage: storage,
 		Balance: big.NewInt(0),
 		Nonce:   0,
+		// it might bring some incompatibility to other geth implementations like erigon, I'm not sure do we need to
+		// keep it, but its very important because genesis contracts produces events and its better to save them
+		Logs: statedb.Logs(),
 	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
@@ -90,10 +93,14 @@ var slashingIndicatorAddress = common.HexToAddress("0x00000000000000000000000000
 var systemRewardAddress = common.HexToAddress("0x0000000000000000000000000000000000001002")
 var contractDeployerAddress = common.HexToAddress("0x0000000000000000000000000000000000007001")
 var governanceAddress = common.HexToAddress("0x0000000000000000000000000000000000007002")
+var chainConfigAddress = common.HexToAddress("0x0000000000000000000000000000000000007003")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 
 //go:embed build/contracts/Staking.json
 var stakingRawArtifact []byte
+
+//go:embed build/contracts/ChainConfig.json
+var chainConfigRawArtifact []byte
 
 //go:embed build/contracts/SlashingIndicator.json
 var slashingIndicatorRawArtifact []byte
@@ -154,8 +161,10 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
-	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint32", "uint32", "uint32", "uint32", "uint32", "uint32"}, []interface{}{
+	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]"}, []interface{}{
 		config.Validators,
+	})
+	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
 		config.ConsensusParams.MisdemeanorThreshold,

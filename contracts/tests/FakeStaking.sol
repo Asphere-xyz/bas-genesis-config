@@ -5,27 +5,11 @@ import "../Staking.sol";
 
 contract FakeStaking is Staking {
 
-    constructor(
-        address[] memory validators,
-        uint32 activeValidatorsLength,
-        uint32 epochBlockInterval,
-        uint32 misdemeanorThreshold,
-        uint32 felonyThreshold,
-        uint32 validatorJailEpochLength,
-        uint32 undelegatePeriod
-    ) Staking(
-        validators,
-        activeValidatorsLength,
-        epochBlockInterval,
-        misdemeanorThreshold,
-        felonyThreshold,
-        validatorJailEpochLength,
-        undelegatePeriod
-    ) {
+    constructor(address[] memory validators) Staking(validators) {
     }
 
     function addValidator(address account) external override {
-        _addValidator(account, account, ValidatorStatus.Active, 0, 0);
+        _addValidator(account, account, ValidatorStatus.Active, 0, 0, _nextEpoch());
     }
 
     function removeValidator(address account) external override {
