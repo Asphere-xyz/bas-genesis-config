@@ -327,7 +327,7 @@ contract Staking is IStaking, InjectorContextHolder {
             if (undelegateOp.epoch > beforeEpoch) {
                 break;
             }
-            availableFunds += uint64(undelegateOp.amount) * 1 gwei;
+            availableFunds += uint256(undelegateOp.amount) * 1 gwei;
             delete delegation.undelegateQueue[delegation.undelegateGap];
             ++delegation.undelegateGap;
         }
