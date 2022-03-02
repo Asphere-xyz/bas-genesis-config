@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"io/ioutil"
 	"math/big"
+	"reflect"
+	"unsafe"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
@@ -46,6 +49,35 @@ func createExtraData(validators []common.Address) []byte {
 	return extra
 }
 
+func readDirtyStorageFromState(f *state.StateObject) state.Storage {
+	var result map[common.Hash]common.Hash
+	rs := reflect.ValueOf(*f)
+	rf := rs.FieldByName("dirtyStorage")
+	rs2 := reflect.New(rs.Type()).Elem()
+	rs2.Set(rs)
+	rf = rs2.FieldByName("dirtyStorage")
+	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
+	ri := reflect.ValueOf(&result).Elem() // i, but writeable
+	ri.Set(rf)
+	return result
+}
+
+func readLogsFromState(f *state.StateDB) (logs []*types.Log) {
+	var result map[common.Hash][]*types.Log
+	rs := reflect.ValueOf(*f)
+	rf := rs.FieldByName("logs")
+	rs2 := reflect.New(rs.Type()).Elem()
+	rs2.Set(rs)
+	rf = rs2.FieldByName("logs")
+	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
+	ri := reflect.ValueOf(&result).Elem() // i, but writeable
+	ri.Set(rf)
+	for _, log := range result {
+		logs = append(logs, log...)
+	}
+	return logs
+}
+
 func simulateSystemContract(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, constructor []byte) error {
 	artifact := &artifactData{}
 	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
@@ -65,21 +97,26 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
 	)
 	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
-	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
+	ephemeralAddress := crypto.CreateAddress(common.Address{}, evm.StateDB.GetNonce(common.Address{}))
+	deployedBytecode, _, _, err := evm.Create(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0))
 	if err != nil {
 		return err
 	}
-	contractState := statedb.GetOrNewStateObject(systemContract)
-	storage := contractState.GetDirtyStorage()
+	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(ephemeralAddress))
+	logs := readLogsFromState(statedb)
 	// read state changes from state database
 	genesisAccount := core.GenesisAccount{
 		Code:    deployedBytecode,
 		Storage: storage,
 		Balance: big.NewInt(0),
 		Nonce:   0,
-		// it might bring some incompatibility to other geth implementations like erigon, I'm not sure do we need to
-		// keep it, but its very important because genesis contracts produces events and its better to save them
-		Logs: statedb.Logs(),
+	}
+	// it might bring some incompatibility to other Geth implementations like Erigon, I'm not sure do we need to
+	// keep it, but it might be important because genesis contracts produces events, and it's better to save them if
+	// its supported
+	logsGenesisField := reflect.ValueOf(genesis).Elem().FieldByName("Logs")
+	if logsGenesisField.IsValid() {
+		logsGenesisField.Elem().Set(reflect.ValueOf(logs))
 	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
