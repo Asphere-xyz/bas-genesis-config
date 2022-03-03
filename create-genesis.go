@@ -57,25 +57,9 @@ func readDirtyStorageFromState(f *state.StateObject) state.Storage {
 	rs2.Set(rs)
 	rf = rs2.FieldByName("dirtyStorage")
 	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
-	ri := reflect.ValueOf(&result).Elem() // i, but writeable
+	ri := reflect.ValueOf(&result).Elem()
 	ri.Set(rf)
 	return result
-}
-
-func readLogsFromState(f *state.StateDB) (logs []*types.Log) {
-	var result map[common.Hash][]*types.Log
-	rs := reflect.ValueOf(*f)
-	rf := rs.FieldByName("logs")
-	rs2 := reflect.New(rs.Type()).Elem()
-	rs2.Set(rs)
-	rf = rs2.FieldByName("logs")
-	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
-	ri := reflect.ValueOf(&result).Elem() // i, but writeable
-	ri.Set(rf)
-	for _, log := range result {
-		logs = append(logs, log...)
-	}
-	return logs
 }
 
 func simulateSystemContract(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, constructor []byte) error {
@@ -103,7 +87,7 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		return err
 	}
 	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(ephemeralAddress))
-	logs := readLogsFromState(statedb)
+	logs := statedb.Logs()
 	// read state changes from state database
 	genesisAccount := core.GenesisAccount{
 		Code:    deployedBytecode,
