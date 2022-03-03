@@ -23,12 +23,12 @@ contract Staking is IStaking, InjectorContextHolder {
     uint16 internal constant COMMISSION_RATE_MAX_VALUE = 3000; // 30%
 
     // validator events
-    event Added(address indexed validator, address owner, uint8 status, uint16 commissionRate);
-    event Modified(address indexed validator, address owner, uint8 status, uint16 commissionRate);
-    event Removed(address indexed validator);
-    event OwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
-    event Slashed(address indexed validator, uint32 slashes, uint64 epoch);
-    event Jailed(address indexed validator, uint64 epoch);
+    event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
+    event ValidatorModified(address indexed validator, address owner, uint8 status, uint16 commissionRate);
+    event ValidatorRemoved(address indexed validator);
+    event ValidatorOwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
+    event ValidatorSlashed(address indexed validator, uint32 slashes, uint64 epoch);
+    event ValidatorJailed(address indexed validator, uint64 epoch);
     // staker events
     event Delegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
     event Undelegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
@@ -393,7 +393,7 @@ contract Staking is IStaking, InjectorContextHolder {
         if (systemFee > 0) {
             _unsafeTransfer(payable(address(_systemRewardContract)), systemFee);
         }
-        emit OwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
+        emit ValidatorOwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
     }
 
     function _calcValidatorOwnerRewards(Validator memory validator, uint64 beforeEpoch) internal view returns (uint256) {
@@ -458,7 +458,7 @@ contract Staking is IStaking, InjectorContextHolder {
         require(delegation.delegateQueue.length == 0, "Staking: delegation queue is not empty");
         delegation.delegateQueue.push(DelegationOpDelegate(initialStake, sinceEpoch));
         // emit event
-        emit Added(validatorAddress, validatorOwner, uint8(status), commissionRate);
+        emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }
 
     function removeValidator(address account) external onlyFromGovernance virtual override {
@@ -485,7 +485,7 @@ contract Staking is IStaking, InjectorContextHolder {
         delete _validatorOwners[validator.ownerAddress];
         delete _validatorsMap[account];
         // emit event about it
-        emit Removed(account);
+        emit ValidatorRemoved(account);
     }
 
     function activateValidator(address validator) external onlyFromGovernance virtual override {
@@ -519,7 +519,7 @@ contract Staking is IStaking, InjectorContextHolder {
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
         snapshot.commissionRate = commissionRate;
         _validatorsMap[validatorAddress] = validator;
-        emit Modified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), commissionRate);
+        emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), commissionRate);
     }
 
     function changeValidatorOwner(address validatorAddress, address newOwner) external override {
@@ -530,7 +530,7 @@ contract Staking is IStaking, InjectorContextHolder {
         _validatorOwners[newOwner] = validatorAddress;
         _validatorsMap[validatorAddress] = validator;
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
-        emit Modified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
+        emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
     function isValidatorActive(address account) external override view returns (bool) {
@@ -670,9 +670,9 @@ contract Staking is IStaking, InjectorContextHolder {
             validator.jailedBefore = _currentEpoch() + _chainConfigContract.getValidatorJailEpochLength();
             validator.status = ValidatorStatus.Jail;
             _validatorsMap[validatorAddress] = validator;
-            emit Jailed(validatorAddress, epoch);
+            emit ValidatorJailed(validatorAddress, epoch);
         }
         // emit event
-        emit Slashed(validatorAddress, slashesCount, epoch);
+        emit ValidatorSlashed(validatorAddress, slashesCount, epoch);
     }
 }
