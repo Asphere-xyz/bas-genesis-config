@@ -6,6 +6,12 @@ import "./Injector.sol";
 contract Staking is IStaking, InjectorContextHolder {
 
     /**
+     * This gas limit is used for internal transfers, BSC doesn't support berlin and it
+     * might cause problems with smart contracts who used to stake transparent proxies or
+     * beacon proxies that have a lot of expensive SLOAD instructions.
+     */
+    uint64 internal constant TRANSFER_GAS_LIMIT = 30000;
+    /**
      * Here is min/max commission rates, lets don't allow to set more than 30% of validator commission
      * Commission rate is a percents divided by 100 stored with 0 decimals as percents*100 (=pc/1e2*1e4)
      * Here is some examples:
@@ -332,8 +338,7 @@ contract Staking is IStaking, InjectorContextHolder {
             ++delegation.undelegateGap;
         }
         // send available for claim funds to delegator
-        address payable payableDelegator = payable(delegator);
-        payableDelegator.transfer(availableFunds);
+        _safeTransferWithGasLimit(payable(delegator), availableFunds);
         // emit event
         emit Claimed(validator, delegator, availableFunds, beforeEpoch);
     }
@@ -383,11 +388,10 @@ contract Staking is IStaking, InjectorContextHolder {
             availableFunds += ownerFee;
             systemFee += slashingFee;
         }
-        address payable payableOwner = payable(validator.ownerAddress);
-        payableOwner.transfer(availableFunds);
+        _safeTransferWithGasLimit(payable(validator.ownerAddress), availableFunds);
         // if we have system fee then pay it to treasury account
         if (systemFee > 0) {
-            _payToTreasury(systemFee);
+            _unsafeTransfer(payable(address(_systemRewardContract)), systemFee);
         }
         emit OwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
     }
@@ -636,9 +640,14 @@ contract Staking is IStaking, InjectorContextHolder {
         _claimDelegatorRewardsAndPendingUndelegates(validatorAddress, msg.sender);
     }
 
-    function _payToTreasury(uint256 amount) internal {
-        (bool success,) = payable(address(_systemRewardContract)).call{value : amount}("");
-        require(success, "Staking: failed to send to treasury");
+    function _safeTransferWithGasLimit(address payable recipient, uint256 amount) internal {
+        (bool success,) = recipient.call{value: amount, gas: TRANSFER_GAS_LIMIT}("");
+        require(success, "Staking: failed to safe transfer");
+    }
+
+    function _unsafeTransfer(address payable recipient, uint256 amount) internal {
+        (bool success,) = payable(address(recipient)).call{value : amount}("");
+        require(success, "Staking: failed to unsafe transfer");
     }
 
     function slash(address validatorAddress) external onlyFromCoinbaseOrSlashingIndicator onlyZeroGasPrice onlyOncePerBlock virtual override {
