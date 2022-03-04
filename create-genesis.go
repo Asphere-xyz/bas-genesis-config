@@ -160,6 +160,7 @@ type genesisConfig struct {
 	ConsensusParams consensusParams
 	VotingPeriod    int64
 	Faucet          map[common.Address]string
+	Bootnodes       []string
 }
 
 func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}) {
@@ -177,6 +178,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	// extra data
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
+	genesis.BootNodes = config.Bootnodes
 	// execute system contracts
 	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]"}, []interface{}{
 		config.Validators,
@@ -256,7 +258,7 @@ var devnetConfig = genesisConfig{
 	Genesis: defaultGenesisConfig(1337),
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{
-		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"),
+		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
 	},
 	// list of default validators
 	Validators: []common.Address{
@@ -273,6 +275,8 @@ var devnetConfig = genesisConfig{
 	},
 	// owner of the governance
 	VotingPeriod: 20, // 1 minute
+	// bootnodes
+	Bootnodes: []string{},
 	// faucet
 	Faucet: map[common.Address]string{},
 }
@@ -300,6 +304,8 @@ var testnetConfig = genesisConfig{
 	},
 	// owner of the governance
 	VotingPeriod: 60, // 3 minutes
+	// bootnodes
+	Bootnodes: []string{},
 	// faucet
 	Faucet: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",    // governance
