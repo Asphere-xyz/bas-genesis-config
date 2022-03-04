@@ -5,11 +5,7 @@ const ChainConfig = artifacts.require("ChainConfig");
 const Staking = artifacts.require("Staking");
 const SlashingIndicator = artifacts.require("SlashingIndicator");
 const SystemReward = artifacts.require("SystemReward");
-
-const ContractDeployer = artifacts.require("ContractDeployer");
 const Governance = artifacts.require("Governance");
-
-const FakeContractDeployer = artifacts.require("FakeContractDeployer");
 const FakeStaking = artifacts.require("FakeStaking");
 
 const DEFAULT_MOCK_PARAMS = {
@@ -20,7 +16,6 @@ const DEFAULT_MOCK_PARAMS = {
   felonyThreshold: '150',
   validatorJailEpochLength: '7',
   undelegatePeriod: '0',
-  genesisDeployers: [],
   genesisValidators: [],
 };
 
@@ -29,7 +24,6 @@ const DEFAULT_CONTRACT_TYPES = {
   Staking: Staking,
   SlashingIndicator: SlashingIndicator,
   SystemReward: SystemReward,
-  ContractDeployer: ContractDeployer,
   Governance: Governance,
 };
 
@@ -39,7 +33,6 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     Staking,
     SlashingIndicator,
     SystemReward,
-    ContractDeployer,
     Governance
   } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
   const {
@@ -49,7 +42,6 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     misdemeanorThreshold,
     felonyThreshold,
     validatorJailEpochLength,
-    genesisDeployers,
     genesisValidators,
     undelegatePeriod,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
@@ -57,16 +49,14 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   const staking = await Staking.new(genesisValidators);
   const slashingIndicator = await SlashingIndicator.new();
   const systemReward = await SystemReward.new(systemTreasury);
-  const contractDeployer = await ContractDeployer.new(genesisDeployers);
   const governance = await Governance.new(1);
   const chainConfig = await ChainConfig.new(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
   // init them all
-  for (const contract of [chainConfig, staking, slashingIndicator, systemReward, contractDeployer, governance]) {
+  for (const contract of [chainConfig, staking, slashingIndicator, systemReward, governance]) {
     await contract.initManually(
       staking.address,
       slashingIndicator.address,
       systemReward.address,
-      contractDeployer.address,
       governance.address,
       chainConfig.address,
     );
@@ -76,8 +66,6 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     parlia: staking,
     slashingIndicator,
     systemReward,
-    contractDeployer,
-    deployer: contractDeployer,
     governance,
     chainConfig,
     config: chainConfig,
@@ -87,7 +75,6 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
 const newMockContract = async (owner, params = {}) => {
   return newContractUsingTypes(owner, params, {
     Staking: FakeStaking,
-    ContractDeployer: FakeContractDeployer,
   });
 }
 
