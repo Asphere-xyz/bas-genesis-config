@@ -98,9 +98,9 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	// it might bring some incompatibility to other Geth implementations like Erigon, I'm not sure do we need to
 	// keep it, but it might be important because genesis contracts produces events, and it's better to save them if
 	// its supported
-	logsGenesisField := reflect.ValueOf(genesis).Elem().FieldByName("Logs")
+	logsGenesisField := reflect.ValueOf(&genesisAccount).Elem().FieldByName("Logs")
 	if logsGenesisField.IsValid() {
-		logsGenesisField.Elem().Set(reflect.ValueOf(logs))
+		logsGenesisField.Set(reflect.ValueOf(logs))
 	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
