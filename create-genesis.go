@@ -112,7 +112,6 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 var stakingAddress = common.HexToAddress("0x0000000000000000000000000000000000001000")
 var slashingIndicatorAddress = common.HexToAddress("0x0000000000000000000000000000000000001001")
 var systemRewardAddress = common.HexToAddress("0x0000000000000000000000000000000000001002")
-var contractDeployerAddress = common.HexToAddress("0x0000000000000000000000000000000000007001")
 var governanceAddress = common.HexToAddress("0x0000000000000000000000000000000000007002")
 var chainConfigAddress = common.HexToAddress("0x0000000000000000000000000000000000007003")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
@@ -128,9 +127,6 @@ var slashingIndicatorRawArtifact []byte
 
 //go:embed build/contracts/SystemReward.json
 var systemRewardRawArtifact []byte
-
-//go:embed build/contracts/ContractDeployer.json
-var contractDeployerRawArtifact []byte
 
 //go:embed build/contracts/Governance.json
 var governanceRawArtifact []byte
@@ -196,9 +192,6 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{})
 	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address"}, []interface{}{
 		config.SystemTreasury,
-	})
-	invokeConstructorOrPanic(genesis, contractDeployerAddress, contractDeployerRawArtifact, []string{"address[]"}, []interface{}{
-		config.Deployers,
 	})
 	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
 		big.NewInt(config.VotingPeriod),
@@ -281,11 +274,7 @@ var devnetConfig = genesisConfig{
 	// owner of the governance
 	VotingPeriod: 20, // 1 minute
 	// faucet
-	Faucet: map[common.Address]string{
-		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"): "0x21e19e0c9bab2400000", // dmitry
-		common.HexToAddress("0x57BA24bE2cF17400f37dB3566e839bfA6A2d018a"): "0x21e19e0c9bab2400000", // chiliz
-		common.HexToAddress("0xEbCf9D06cf9333706E61213F17A795B2F7c55F1b"): "0x21e19e0c9bab2400000", // chiliz
-	},
+	Faucet: map[common.Address]string{},
 }
 
 var testnetConfig = genesisConfig{
@@ -314,9 +303,6 @@ var testnetConfig = genesisConfig{
 	// faucet
 	Faucet: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",    // governance
-		common.HexToAddress("0xbAdCab1E02FB68dDD8BBB0A45Cc23aBb60e174C8"): "0x21e19e0c9bab2400000",    // dmitry
-		common.HexToAddress("0x57BA24bE2cF17400f37dB3566e839bfA6A2d018a"): "0x21e19e0c9bab2400000",    // chiliz
-		common.HexToAddress("0xEbCf9D06cf9333706E61213F17A795B2F7c55F1b"): "0x21e19e0c9bab2400000",    // chiliz
 		common.HexToAddress("0xb891fe7b38f857f53a7b5529204c58d5c487280b"): "0x52b7d2dcc80cd2e4000000", // faucet (10kk)
 	},
 }

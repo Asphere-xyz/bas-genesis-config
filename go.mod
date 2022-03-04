@@ -1,4 +1,4 @@
-module github.com/chiliz-chain/v2-genesis-config
+module github.com/Ankr-network/bas-genesis-config
 
 go 1.17
 

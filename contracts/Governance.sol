@@ -11,7 +11,7 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
 
     uint256 internal _instantVotingPeriod;
 
-    constructor(uint256 _votingPeriod) Governor("Chiliz Governance") GovernorSettings(0, _votingPeriod, 0) {
+    constructor(uint256 _votingPeriod) Governor("Governance") GovernorSettings(0, _votingPeriod, 0) {
     }
 
     function getVotingSupply() external view returns (uint256) {

@@ -20,7 +20,7 @@ abstract contract InjectorContextHolder is IInjector {
     IStaking internal _stakingContract;
     ISlashingIndicator internal _slashingIndicatorContract;
     ISystemReward internal _systemRewardContract;
-    // CCv2 defined contracts
+    // BAS defined contracts
     IContractDeployer internal _contractDeployerContract;
     IGovernance internal _governanceContract;
     IChainConfig internal _chainConfigContract;
@@ -32,7 +32,7 @@ abstract contract InjectorContextHolder is IInjector {
         _stakingContract = IStaking(0x0000000000000000000000000000000000001000);
         _slashingIndicatorContract = ISlashingIndicator(0x0000000000000000000000000000000000001001);
         _systemRewardContract = ISystemReward(0x0000000000000000000000000000000000001002);
-        // CCv2 defined addresses
+        // BAS defined addresses
         _contractDeployerContract = IContractDeployer(0x0000000000000000000000000000000000007001);
         _governanceContract = IGovernance(0x0000000000000000000000000000000000007002);
         _chainConfigContract = IChainConfig(0x0000000000000000000000000000000000007003);
