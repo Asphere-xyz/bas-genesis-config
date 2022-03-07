@@ -26,4 +26,12 @@ interface IChainConfig {
     function getUndelegatePeriod() external view returns (uint32);
 
     function setUndelegatePeriod(uint32 newValue) external;
+
+    function getMinValidatorStakeAmount() external view returns (uint64);
+
+    function setMinValidatorStakeAmount(uint64 newValue) external;
+
+    function getMinStakingAmount() external view returns (uint64);
+
+    function setMinStakingAmount(uint64 newValue) external;
 }

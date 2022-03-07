@@ -16,6 +16,8 @@ const DEFAULT_MOCK_PARAMS = {
   felonyThreshold: '150',
   validatorJailEpochLength: '7',
   undelegatePeriod: '0',
+  minValidatorStakeAmount: '1',
+  minStakingAmount: '1',
   genesisValidators: [],
 };
 
@@ -44,13 +46,15 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     validatorJailEpochLength,
     genesisValidators,
     undelegatePeriod,
+    minValidatorStakeAmount,
+    minStakingAmount,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
   const staking = await Staking.new(genesisValidators);
   const slashingIndicator = await SlashingIndicator.new();
   const systemReward = await SystemReward.new(systemTreasury);
   const governance = await Governance.new(1);
-  const chainConfig = await ChainConfig.new(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod);
+  const chainConfig = await ChainConfig.new(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount);
   // init them all
   for (const contract of [chainConfig, staking, slashingIndicator, systemReward, governance]) {
     await contract.initManually(

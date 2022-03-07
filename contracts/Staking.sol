@@ -6,14 +6,28 @@ import "./Injector.sol";
 contract Staking is IStaking, InjectorContextHolder {
 
     /**
-     * This gas limit is used for internal transfers, BSC doesn't support berlin and it
-     * might cause problems with smart contracts who used to stake transparent proxies or
-     * beacon proxies that have a lot of expensive SLOAD instructions.
+     * This constant indicates precision of storing compact balances in the storage or floating point. Since default
+     * balance precision is 256 bits it might gain some overhead on the storage because we don't need to store such huge
+     * amount range. That is why we compact balances in uint64 values instead of uint256. By managing this value
+     * you can set the precision of your balances, aka min and max possible staking amount. This value depends
+     * mostly on your asset price in USD, for example ETH costs 4000$ then if we use 1 ether precision it takes 4000$
+     * as min amount that might be problematic for users to do the stake. We can set 1 gwei precision and in this case
+     * we increase min staking amount in 1e9 times, but also decreases max staking amount or total amount of staked assets.
+     *
+     * Here is an universal formula, if your asset is cheap in USD equivalent, like ~1$, then use 1 ether precision,
+     * otherwise it might be better to use 1 gwei precision or any other amount that your want.
+     *
+     * Also be careful with setting `minValidatorStakeAmount` and `minStakingAmount`, because these values has
+     * the same precision as specified here. It means that if you set precision 1 ether, then min staking amount of 10
+     * tokens should have 10 raw value. For 1 gwei precision 10 tokens min amount should be stored as 10000000000.
+     *
+     * WARNING: precision must be a 1eN format (A=1, N>0)
      */
-    uint64 internal constant TRANSFER_GAS_LIMIT = 30000;
+    uint256 internal constant BALANCE_COMPACT_PRECISION = 1 ether;
     /**
-     * Here is min/max commission rates, lets don't allow to set more than 30% of validator commission
-     * Commission rate is a percents divided by 100 stored with 0 decimals as percents*100 (=pc/1e2*1e4)
+     * Here is min/max commission rates. Lets don't allow to set more than 30% of validator commission, because it's
+     * too big commission for validator. Commission rate is a percents divided by 100 stored with 0 decimals as percents*100 (=pc/1e2*1e4)
+     *
      * Here is some examples:
      * + 0.3% => 0.3*100=30
      * + 3% => 3*100=300
@@ -21,6 +35,12 @@ contract Staking is IStaking, InjectorContextHolder {
      */
     uint16 internal constant COMMISSION_RATE_MIN_VALUE = 0; // 0%
     uint16 internal constant COMMISSION_RATE_MAX_VALUE = 3000; // 30%
+    /**
+     * This gas limit is used for internal transfers, BSC doesn't support berlin and it
+     * might cause problems with smart contracts who used to stake transparent proxies or
+     * beacon proxies that have a lot of expensive SLOAD instructions.
+     */
+    uint64 internal constant TRANSFER_GAS_LIMIT = 30000;
 
     // validator events
     event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
@@ -29,6 +49,7 @@ contract Staking is IStaking, InjectorContextHolder {
     event ValidatorOwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
     event ValidatorSlashed(address indexed validator, uint32 slashes, uint64 epoch);
     event ValidatorJailed(address indexed validator, uint64 epoch);
+
     // staker events
     event Delegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
     event Undelegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
@@ -101,7 +122,7 @@ contract Staking is IStaking, InjectorContextHolder {
             return (delegatedAmount = 0, atEpoch = 0);
         }
         DelegationOpDelegate memory snapshot = delegation.delegateQueue[delegation.delegateQueue.length - 1];
-        return (delegatedAmount = uint256(snapshot.amount) * 1 gwei, atEpoch = snapshot.epoch);
+        return (delegatedAmount = uint256(snapshot.amount) * BALANCE_COMPACT_PRECISION, atEpoch = snapshot.epoch);
     }
 
     function getValidatorStatus(address validatorAddress) external view override returns (
@@ -118,7 +139,7 @@ contract Staking is IStaking, InjectorContextHolder {
         return (
         ownerAddress = validator.ownerAddress,
         status = uint8(validator.status),
-        totalDelegated = uint256(snapshot.totalDelegated) * 1 gwei,
+        totalDelegated = uint256(snapshot.totalDelegated) * BALANCE_COMPACT_PRECISION,
         slashesCount = snapshot.slashesCount,
         changedAt = validator.changedAt,
         jailedBefore = validator.jailedBefore,
@@ -140,7 +161,7 @@ contract Staking is IStaking, InjectorContextHolder {
         return (
         ownerAddress = validator.ownerAddress,
         status = uint8(validator.status),
-        totalDelegated = uint256(snapshot.totalDelegated) * 1 gwei,
+        totalDelegated = uint256(snapshot.totalDelegated) * BALANCE_COMPACT_PRECISION,
         slashesCount = snapshot.slashesCount,
         changedAt = validator.changedAt,
         jailedBefore = validator.jailedBefore,
@@ -166,7 +187,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _totalDelegatedToValidator(Validator memory validator) internal view returns (uint256) {
         ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
-        return uint256(snapshot.totalDelegated) * 1 gwei;
+        return uint256(snapshot.totalDelegated) * BALANCE_COMPACT_PRECISION;
     }
 
     function delegate(address validatorAddress) payable external override {
@@ -224,9 +245,10 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
-        // 1 ether is minimum delegate amount
-        require(amount >= 1 ether, "Staking: amount too low");
-        require(amount % 1 ether == 0, "Staking: amount shouldn't have a remainder");
+        // check is minimum delegate amount
+        require(amount / BALANCE_COMPACT_PRECISION >= _chainConfigContract.getMinStakingAmount(), "Staking: amount is too low");
+        require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
+        // make sure amount is greater than min staking amount
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[toValidator];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
@@ -236,7 +258,7 @@ contract Staking is IStaking, InjectorContextHolder {
         // + increase total delegated amount in the next epoch for this validator
         // + re-save validator because last affected epoch might change
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, nextEpoch);
-        validatorSnapshot.totalDelegated += uint64(amount / 1 gwei);
+        validatorSnapshot.totalDelegated += uint64(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[toValidator] = validator;
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
@@ -247,22 +269,22 @@ contract Staking is IStaking, InjectorContextHolder {
             // if we already have pending snapshot for the next epoch then just increase new amount,
             // otherwise create next pending snapshot. (tbh it can't be greater, but what we can do here instead?)
             if (recentDelegateOp.epoch >= nextEpoch) {
-                recentDelegateOp.amount += uint64(amount / 1 gwei);
+                recentDelegateOp.amount += uint64(amount / BALANCE_COMPACT_PRECISION);
             } else {
-                delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : recentDelegateOp.amount + uint64(amount / 1 gwei)}));
+                delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : recentDelegateOp.amount + uint64(amount / BALANCE_COMPACT_PRECISION)}));
             }
         } else {
             // there is no any delegations at al, lets create the first one
-            delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : uint64(amount / 1 gwei)}));
+            delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : uint64(amount / BALANCE_COMPACT_PRECISION)}));
         }
         // emit event with the next epoch
         emit Delegated(toValidator, fromDelegator, amount, nextEpoch);
     }
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
-        // 1 ether is minimum delegate amount
-        require(amount >= 1 ether, "Staking: amount too low");
-        require(amount % 1 ether == 0, "Staking: amount shouldn't have a remainder");
+        // check minimum delegate amount
+        require(amount / BALANCE_COMPACT_PRECISION >= _chainConfigContract.getMinStakingAmount(), "Staking: amount is too low");
+        require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
@@ -272,8 +294,8 @@ contract Staking is IStaking, InjectorContextHolder {
         // + increase total delegated amount in the next epoch for this validator
         // + re-save validator because last affected epoch might change
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, nextEpoch);
-        require(validatorSnapshot.totalDelegated >= uint64(amount / 1 gwei), "Staking: insufficient balance");
-        validatorSnapshot.totalDelegated -= uint64(amount / 1 gwei);
+        require(validatorSnapshot.totalDelegated >= uint64(amount / BALANCE_COMPACT_PRECISION), "Staking: insufficient balance");
+        validatorSnapshot.totalDelegated -= uint64(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[fromValidator] = validator;
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
@@ -281,8 +303,8 @@ contract Staking is IStaking, InjectorContextHolder {
         ValidatorDelegation storage delegation = _validatorDelegations[fromValidator][toDelegator];
         require(delegation.delegateQueue.length > 0, "Staking: delegation queue is empty");
         DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
-        require(recentDelegateOp.amount >= uint64(amount / 1 gwei), "Staking: insufficient balance");
-        uint64 nextDelegatedAmount = recentDelegateOp.amount - uint64(amount / 1 gwei);
+        require(recentDelegateOp.amount >= uint64(amount / BALANCE_COMPACT_PRECISION), "Staking: insufficient balance");
+        uint64 nextDelegatedAmount = recentDelegateOp.amount - uint64(amount / BALANCE_COMPACT_PRECISION);
         if (recentDelegateOp.epoch >= nextEpoch) {
             // decrease total delegated amount for the next epoch
             recentDelegateOp.amount = nextDelegatedAmount;
@@ -291,7 +313,7 @@ contract Staking is IStaking, InjectorContextHolder {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : nextEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint64(amount / 1 gwei), epoch : nextEpoch + _chainConfigContract.getUndelegatePeriod()}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint64(amount / BALANCE_COMPACT_PRECISION), epoch : nextEpoch + _chainConfigContract.getUndelegatePeriod()}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, nextEpoch);
     }
@@ -333,7 +355,7 @@ contract Staking is IStaking, InjectorContextHolder {
             if (undelegateOp.epoch > beforeEpoch) {
                 break;
             }
-            availableFunds += uint256(undelegateOp.amount) * 1 gwei;
+            availableFunds += uint256(undelegateOp.amount) * BALANCE_COMPACT_PRECISION;
             delete delegation.undelegateQueue[delegation.undelegateGap];
             ++delegation.undelegateGap;
         }
@@ -372,7 +394,7 @@ contract Staking is IStaking, InjectorContextHolder {
             if (undelegateOp.epoch > beforeEpoch) {
                 break;
             }
-            availableFunds += uint256(undelegateOp.amount) * 1 gwei;
+            availableFunds += uint256(undelegateOp.amount) * BALANCE_COMPACT_PRECISION;
             ++delegation.undelegateGap;
         }
         // return available for claim funds
@@ -425,10 +447,11 @@ contract Staking is IStaking, InjectorContextHolder {
         address validatorOwner = msg.sender;
         uint256 initialStake = msg.value;
         // initial stake requirements
-        require(initialStake >= 1 ether, "Staking: amount too low");
-        require(initialStake % 1 ether == 0, "Staking: amount shouldn't have a remainder");
+        require(initialStake / BALANCE_COMPACT_PRECISION >= _chainConfigContract.getMinValidatorStakeAmount(), "Staking: initial stake is too low");
+        require(initialStake % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
+        // initial stake amount should be greater than minimum validator staking amount
         // add new pending validator
-        _addValidator(validatorAddress, validatorOwner, ValidatorStatus.Pending, commissionRate, uint64(initialStake / 1 gwei), _nextEpoch());
+        _addValidator(validatorAddress, validatorOwner, ValidatorStatus.Pending, commissionRate, uint64(initialStake / BALANCE_COMPACT_PRECISION), _nextEpoch());
     }
 
     function addValidator(address account) external onlyFromGovernance virtual override {
@@ -641,7 +664,7 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _safeTransferWithGasLimit(address payable recipient, uint256 amount) internal {
-        (bool success,) = recipient.call{value: amount, gas: TRANSFER_GAS_LIMIT}("");
+        (bool success,) = recipient.call{value : amount, gas : TRANSFER_GAS_LIMIT}("");
         require(success, "Staking: failed to safe transfer");
     }
 

@@ -95,8 +95,8 @@ contract("Staking", async (accounts) => {
     assert.deepEqual(Array.from(await parlia.getValidators()), [validator2, validator1])
     assert.equal((await parlia.getValidatorStatus(validator1)).totalDelegated.toString(), '1000000000000000000')
     assert.equal((await parlia.getValidatorStatus(validator2)).totalDelegated.toString(), '2000000000000000000')
-    await expectError(parlia.undelegate(validator2, '1', {from: staker2}), 'Staking: amount too low');
-    await expectError(parlia.undelegate(validator2, '1000000000000000001', {from: staker2}), 'Staking: amount shouldn\'t have a remainder');
+    await expectError(parlia.undelegate(validator2, '1', {from: staker2}), 'Staking: amount is too low');
+    await expectError(parlia.undelegate(validator2, '1000000000000000001', {from: staker2}), 'Staking: amount have a remainder');
     await expectError(parlia.undelegate(validator3, '1000000000000000000', {from: staker2}), 'Staking: validator not found');
     let res = await parlia.undelegate(validator2, '1000000000000000000', {from: staker2});
     assert.equal(res.logs[0].args.validator, validator2);
@@ -324,15 +324,15 @@ contract("Staking", async (accounts) => {
     await expectError(parlia.delegate(validator1, {
       from: staker1,
       value: '100000000000000000'
-    }), 'Staking: amount too low') // 0.1
+    }), 'Staking: amount is too low') // 0.1
     await expectError(parlia.delegate(validator1, {
       from: staker1,
       value: '00000000000000000'
-    }), 'Staking: amount too low') // 0
+    }), 'Staking: amount is too low') // 0
     await expectError(parlia.delegate(validator1, {
       from: staker1,
-      value: '1100000000000000000'
-    }), 'Staking: amount shouldn\'t have a remainder') // 1.1
+      value: '1010000000000000000'
+    }), 'Staking: amount have a remainder') // 1.01
   });
   it("put validator in jail after N misses", async () => {
     const {parlia} = await newMockContract(owner, {

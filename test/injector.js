@@ -31,10 +31,9 @@ contract("Injector", async (accounts) => {
       assert.equal(await deployer.getSlashingIndicator(), '0x0000000000000000000000000000000000001001')
       assert.equal(await deployer.getSystemReward(), '0x0000000000000000000000000000000000001002')
       assert.equal(await deployer.getGovernance(), '0x0000000000000000000000000000000000007002')
-      assert.equal(await deployer.getChainConfig(), '0x0000000000000000000000000000000000007003')
     }
     await testInjector(Governance, '1')
     await testInjector(Staking, [])
-    await testInjector(ChainConfig, '0', '0', '0', '0', '0', '0')
+    await testInjector(ChainConfig, '0', '0', '0', '0', '0', '0', '0', '0')
   })
 });

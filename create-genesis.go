@@ -19,7 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
@@ -81,12 +80,11 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
 	)
 	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
-	ephemeralAddress := crypto.CreateAddress(common.Address{}, evm.StateDB.GetNonce(common.Address{}))
-	deployedBytecode, _, _, err := evm.Create(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0))
+	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
 		return err
 	}
-	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(ephemeralAddress))
+	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(systemContract))
 	logs := statedb.Logs()
 	// read state changes from state database
 	genesisAccount := core.GenesisAccount{
@@ -94,13 +92,10 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		Storage: storage,
 		Balance: big.NewInt(0),
 		Nonce:   0,
-	}
-	// it might bring some incompatibility to other Geth implementations like Erigon, I'm not sure do we need to
-	// keep it, but it might be important because genesis contracts produces events, and it's better to save them if
-	// its supported
-	logsGenesisField := reflect.ValueOf(&genesisAccount).Elem().FieldByName("Logs")
-	if logsGenesisField.IsValid() {
-		logsGenesisField.Set(reflect.ValueOf(logs))
+		// it might bring some incompatibility to other Geth implementations like Erigon, I'm not sure do we need to
+		// keep it, but it might be important because genesis contracts produces events, and it's better to save them if
+		// its supported
+		Logs: logs,
 	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
@@ -150,6 +145,8 @@ type consensusParams struct {
 	FelonyThreshold          uint32
 	ValidatorJailEpochLength uint32
 	UndelegatePeriod         uint32
+	MinValidatorStakeAmount  uint64
+	MinStakingAmount         uint64
 }
 
 type genesisConfig struct {
@@ -183,13 +180,15 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]"}, []interface{}{
 		config.Validators,
 	})
-	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32"}, []interface{}{
+	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint64", "uint64"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
 		config.ConsensusParams.MisdemeanorThreshold,
 		config.ConsensusParams.FelonyThreshold,
 		config.ConsensusParams.ValidatorJailEpochLength,
 		config.ConsensusParams.UndelegatePeriod,
+		config.ConsensusParams.MinValidatorStakeAmount * 1e18,
+		config.ConsensusParams.MinStakingAmount * 1e18,
 	})
 	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{})
 	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address"}, []interface{}{
@@ -272,6 +271,8 @@ var devnetConfig = genesisConfig{
 		FelonyThreshold:          100,
 		ValidatorJailEpochLength: 1,
 		UndelegatePeriod:         0,
+		MinValidatorStakeAmount:  1,
+		MinStakingAmount:         1,
 	},
 	// owner of the governance
 	VotingPeriod: 20, // 1 minute
@@ -301,6 +302,8 @@ var testnetConfig = genesisConfig{
 		FelonyThreshold:          150,   // after missing this amount of blocks per day validator goes in jail for N epochs
 		ValidatorJailEpochLength: 7,     // how many epochs validator should stay in jail (7 epochs = ~7 days)
 		UndelegatePeriod:         6,     // allow claiming funds only after 6 epochs (~7 days)
+		MinValidatorStakeAmount:  1,     // how many tokens validator must stake to create a validator (in ether)
+		MinStakingAmount:         1,     // minimum staking amount for delegators (in ether)
 	},
 	// owner of the governance
 	VotingPeriod: 60, // 3 minutes
