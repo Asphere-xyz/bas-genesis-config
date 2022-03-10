@@ -257,7 +257,7 @@ contract("Staking", async (accounts) => {
     await expectError(parlia.deposit(validator4, {
       from: validator1,
       value: '1000000000000000000'
-    }), 'Staking: validator not active');
+    }), 'Staking: validator not found');
     // validator get fees (1.1111 ether)
     await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
     await parlia.deposit(validator1, {from: validator1, value: '100000000000000000'}); // 0.1 ether
