@@ -320,12 +320,6 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _claimDelegatorRewardsAndPendingUndelegates(address validator, address delegator) internal {
         ValidatorDelegation storage delegation = _validatorDelegations[validator][delegator];
-        // lets fail fast if there is nothing to claim
-        if (delegation.delegateGap >= delegation.delegateQueue.length &&
-            delegation.undelegateGap >= delegation.undelegateQueue.length
-        ) {
-            revert("Staking: nothing to claim");
-        }
         uint256 availableFunds = 0;
         uint64 beforeEpoch = _currentEpoch();
         // process delegate queue to calculate staking rewards
@@ -336,7 +330,7 @@ contract Staking is IStaking, InjectorContextHolder {
                 break;
             }
             uint256 voteChangedAtEpoch = 0;
-            if (delegateGap < delegation.delegateQueue.length - 1) {
+            if (delegateGap < queueLength - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegateGap + 1].epoch;
             }
             for (; delegateOp.epoch < beforeEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
@@ -346,6 +340,11 @@ contract Staking is IStaking, InjectorContextHolder {
                 }
                 (uint256 delegatorFee, /*uint256 ownerFee*/, /*uint256 systemFee*/) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
                 availableFunds += delegatorFee * delegateOp.amount / validatorSnapshot.totalDelegated;
+            }
+            // if we have reached end of the delegation list then lets stay on the last item, but with updated latest processed epoch
+            if (delegateGap >= queueLength - 1) {
+                delegation.delegateQueue[delegateGap] = delegateOp;
+                break;
             }
             delete delegation.delegateQueue[delegateGap];
             ++delegateGap;

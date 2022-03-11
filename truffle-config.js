@@ -12,11 +12,11 @@ module.exports = {
   },
   mocha: {
     enableTimeouts: false,
-    reporterOptions: {
-      showTimeSpent: true,
-      showMethodSig: true,
-    },
-    reporter: 'eth-gas-reporter'
+    // reporterOptions: {
+    //   showTimeSpent: true,
+    //   showMethodSig: true,
+    // },
+    // reporter: 'eth-gas-reporter'
   },
   plugins: [
     "solidity-coverage"

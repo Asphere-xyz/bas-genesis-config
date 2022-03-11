@@ -80,11 +80,6 @@ contract("Staking", async (accounts) => {
     await waitForNextEpoch(parlia);
     await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '3000000000000000000')
   });
-  it("throw if there is nothing to claim", async () => {
-    const {parlia} = await newMockContract(owner)
-    await parlia.addValidator(validator1);
-    await expectError(parlia.claimDelegatorFee(validator1, {from: staker1}), 'Staking: nothing to claim');
-  });
   it("undelegate should work on existing delegation", async () => {
     const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1);
@@ -411,7 +406,7 @@ contract("Staking", async (accounts) => {
     initialStake = await parlia.getValidatorDelegation(validator1, validator1);
     assert.equal(initialStake.delegatedAmount, '0');
   })
-  it("validator owner can be changed by existing owner", async () => {
+  it("validator owner is changed by existing owner", async () => {
     const {parlia} = await newMockContract(owner);
     await parlia.addValidator(validator1);
     assert.equal(await parlia.getValidatorByOwner(validator1), validator1);
@@ -424,4 +419,37 @@ contract("Staking", async (accounts) => {
     await parlia.addValidator(validator1);
     await expectError(parlia.changeValidatorCommissionRate(validator1, '0', {from: validator2}), 'Staking: only validator owner');
   });
+  it("delegator can claim new rewards w/o new delegations", async () => {
+    const {parlia} = await newMockContract(owner, {epochBlockInterval: '5'});
+    await parlia.addValidator(validator1);
+    // delegate 1 ether (100%)
+    await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'});
+    await waitForNextEpoch(parlia);
+    // deposit and claim it 1 ether
+    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'});
+    await waitForNextEpoch(parlia);
+    await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '1000000000000000000');
+    await waitForNextEpoch(parlia);
+    // deposit 1 more ether and claim it
+    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'});
+    await waitForNextEpoch(parlia);
+    // await debug(parlia.claimDelegatorFee(validator1, {from: staker1}))
+    await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '1000000000000000000', true);
+  })
+  it("benchmark delegator reward claim", async () => {
+    const {parlia} = await newMockContract(owner, {
+      epochBlockInterval: '1',
+    });
+    await parlia.addValidator(validator1);
+    await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0 (100% share)
+    const costOfClaims = [1, 10]
+    for (const blocks of costOfClaims) {
+      for (let i = 0; i < blocks; i++) {
+        console.log(`Depositing 1 ether: ${i}/${blocks}`);
+        await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1.0
+      }
+      const result = await parlia.claimDelegatorFee(validator1, {from: staker1})
+      console.log(` + ${blocks} blocks, amount=${new BigNumber(result.logs[0].args.amount).dividedBy(1e18).toString(10)}, gas=${result.receipt.gasUsed}`);
+    }
+  })
 });
