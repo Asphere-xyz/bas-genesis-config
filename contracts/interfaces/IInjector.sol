@@ -8,11 +8,7 @@ import "./IGovernance.sol";
 
 interface IInjector {
 
-    function getStaking() external view returns (IStaking);
+    function init() external;
 
-    function getSlashingIndicator() external view returns (ISlashingIndicator);
-
-    function getSystemReward() external view returns (ISystemReward);
-
-    function getGovernance() external view returns (IGovernance);
+    function isInitialized() external view returns (bool);
 }

@@ -8,6 +8,7 @@ import "./interfaces/ISlashingIndicator.sol";
 import "./interfaces/ISystemReward.sol";
 import "./interfaces/IValidatorSet.sol";
 import "./interfaces/IStaking.sol";
+import "./interfaces/IRuntimeUpgrade.sol";
 import "./interfaces/IInjector.sol";
 
 abstract contract InjectorContextHolder is IInjector {
@@ -22,10 +23,11 @@ abstract contract InjectorContextHolder is IInjector {
     // BAS defined contracts
     IGovernance internal _governanceContract;
     IChainConfig internal _chainConfigContract;
+    IRuntimeUpgrade internal _runtimeUpgradeContract;
 
-    uint256[100 - 7] private __reserved;
+    uint256[100 - 8] private __reserved;
 
-    function init() public whenNotInitialized virtual {
+    function init() external whenNotInitialized {
         // BSC compatible addresses
         _stakingContract = IStaking(0x0000000000000000000000000000000000001000);
         _slashingIndicatorContract = ISlashingIndicator(0x0000000000000000000000000000000000001001);
@@ -33,6 +35,11 @@ abstract contract InjectorContextHolder is IInjector {
         // BAS defined addresses
         _governanceContract = IGovernance(0x0000000000000000000000000000000000007002);
         _chainConfigContract = IChainConfig(0x0000000000000000000000000000000000007003);
+        _runtimeUpgradeContract = IRuntimeUpgrade(0x0000000000000000000000000000000000007004);
+    }
+
+    function isInitialized() external view returns (bool) {
+        return _init;
     }
 
     function initManually(
@@ -40,13 +47,15 @@ abstract contract InjectorContextHolder is IInjector {
         ISlashingIndicator slashingIndicatorContract,
         ISystemReward systemRewardContract,
         IGovernance governanceContract,
-        IChainConfig chainConfigContract
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract
     ) public whenNotInitialized {
         _stakingContract = stakingContract;
         _slashingIndicatorContract = slashingIndicatorContract;
         _systemRewardContract = systemRewardContract;
         _governanceContract = governanceContract;
         _chainConfigContract = chainConfigContract;
+        _runtimeUpgradeContract = runtimeUpgradeContract;
     }
 
     modifier onlyFromCoinbase() {
