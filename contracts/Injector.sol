@@ -54,8 +54,8 @@ abstract contract InjectorContextHolder is IInjector {
         _;
     }
 
-    modifier onlyFromCoinbaseOrSlashingIndicator() {
-        require(msg.sender == block.coinbase || msg.sender == address(_slashingIndicatorContract), "InjectorContextHolder: only coinbase or slashing indicator");
+    modifier onlyFromSlashingIndicator() {
+        require(msg.sender == address(_slashingIndicatorContract), "InjectorContextHolder: only slashing indicator");
         _;
     }
 

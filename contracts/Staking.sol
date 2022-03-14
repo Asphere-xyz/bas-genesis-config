@@ -713,7 +713,7 @@ contract Staking is IStaking, InjectorContextHolder {
         require(success, "Staking: failed to unsafe transfer");
     }
 
-    function slash(address validatorAddress) external onlyFromCoinbaseOrSlashingIndicator onlyZeroGasPrice onlyOncePerBlock virtual override {
+    function slash(address validatorAddress) external onlyFromSlashingIndicator virtual override {
         _slashValidator(validatorAddress);
     }
 
