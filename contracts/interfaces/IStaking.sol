@@ -5,6 +5,10 @@ import "./IValidatorSet.sol";
 
 interface IStaking is IValidatorSet {
 
+    function currentEpoch() external view returns (uint64);
+
+    function nextEpoch() external view returns (uint64);
+
     function isValidatorActive(address validator) external view returns (bool);
 
     function isValidator(address validator) external view returns (bool);

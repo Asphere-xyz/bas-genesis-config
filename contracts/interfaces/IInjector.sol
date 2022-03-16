@@ -5,6 +5,7 @@ import "./IStaking.sol";
 import "./ISlashingIndicator.sol";
 import "./ISystemReward.sol";
 import "./IGovernance.sol";
+import "./IChainConfig.sol";
 
 interface IInjector {
 
@@ -15,4 +16,6 @@ interface IInjector {
     function getSystemReward() external view returns (ISystemReward);
 
     function getGovernance() external view returns (IGovernance);
+
+    function getChainConfig() external view returns (IChainConfig);
 }

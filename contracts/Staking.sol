@@ -202,6 +202,10 @@ contract Staking is IStaking, InjectorContextHolder {
         return _currentEpoch();
     }
 
+    function nextEpoch() external view returns (uint64) {
+        return _nextEpoch();
+    }
+
     function _currentEpoch() internal view returns (uint64) {
         return uint64(block.number / _chainConfigContract.getEpochBlockInterval() + 0);
     }
