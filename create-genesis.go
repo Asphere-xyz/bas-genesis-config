@@ -107,12 +107,16 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 var stakingAddress = common.HexToAddress("0x0000000000000000000000000000000000001000")
 var slashingIndicatorAddress = common.HexToAddress("0x0000000000000000000000000000000000001001")
 var systemRewardAddress = common.HexToAddress("0x0000000000000000000000000000000000001002")
+var stakingPoolAddress = common.HexToAddress("0x0000000000000000000000000000000000007001")
 var governanceAddress = common.HexToAddress("0x0000000000000000000000000000000000007002")
 var chainConfigAddress = common.HexToAddress("0x0000000000000000000000000000000000007003")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 
 //go:embed build/contracts/Staking.json
 var stakingRawArtifact []byte
+
+//go:embed build/contracts/StakingPool.json
+var stakingPoolRawArtifact []byte
 
 //go:embed build/contracts/ChainConfig.json
 var chainConfigRawArtifact []byte
@@ -191,6 +195,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.MinStakingAmount * 1e18,
 	})
 	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{})
+	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{})
 	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address"}, []interface{}{
 		config.SystemTreasury,
 	})
