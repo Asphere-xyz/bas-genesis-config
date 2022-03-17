@@ -44,10 +44,6 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         return _stakerShares[validator][staker];
     }
 
-    function getSelfBalance() external view returns (uint256) {
-        return address(this).balance;
-    }
-
     function getValidatorPool(address validator) external view returns (ValidatorPool memory) {
         ValidatorPool memory validatorPool = _getValidatorPool(validator);
         (uint256 stakedAmount, uint256 dustRewards) = _calcUnclaimedDelegatorFee(validatorPool);
