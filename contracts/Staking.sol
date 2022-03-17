@@ -23,7 +23,7 @@ contract Staking is IStaking, InjectorContextHolder {
      *
      * WARNING: precision must be a 1eN format (A=1, N>0)
      */
-    uint256 public constant BALANCE_COMPACT_PRECISION = 1 ether;
+    uint256 internal constant BALANCE_COMPACT_PRECISION = 1 ether;
     /**
      * Here is min/max commission rates. Lets don't allow to set more than 30% of validator commission, because it's
      * too big commission for validator. Commission rate is a percents divided by 100 stored with 0 decimals as percents*100 (=pc/1e2*1e4)
@@ -106,10 +106,11 @@ contract Staking is IStaking, InjectorContextHolder {
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
 
-    constructor(address[] memory validators) {
+    constructor(address[] memory validators, uint16 commissionRate, uint256 initialStake) {
+        require(initialStake % BALANCE_COMPACT_PRECISION == 0);
         // init validators
         for (uint256 i = 0; i < validators.length; i++) {
-            _addValidator(validators[i], validators[i], ValidatorStatus.Active, 0, 0, 0);
+            _addValidator(validators[i], validators[i], ValidatorStatus.Active, commissionRate, uint64(initialStake / BALANCE_COMPACT_PRECISION), 0);
         }
     }
 

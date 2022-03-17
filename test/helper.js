@@ -53,7 +53,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     minStakingAmount,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
-  const staking = await Staking.new(genesisValidators);
+  const staking = await Staking.new(genesisValidators, '0', '0');
   const slashingIndicator = await SlashingIndicator.new();
   const systemReward = await SystemReward.new(systemTreasury);
   const governance = await Governance.new(1);

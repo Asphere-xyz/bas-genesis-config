@@ -35,22 +35,26 @@ contract("Staking", async (accounts) => {
   it("staker can claim his rewards", async () => {
     const {parlia, stakingPool} = await newMockContract(owner, {epochBlockInterval: '10'})
     await parlia.addValidator(validator1);
-    await stakingPool.stake(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0
-    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '1000000000000000000');
+    await stakingPool.stake(validator1, {from: staker1, value: '50000000000000000000'}); // 50.0
+    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '50000000000000000000');
     await waitForNextEpoch(parlia);
-    await parlia.deposit(validator1, {value: '10000000000000000'}); // 0.01
+    await parlia.deposit(validator1, {value: '1010000000000000000'}); // 10.1
     await waitForNextEpoch(parlia);
-    console.log(`Validator Pool: ${(await stakingPool.getValidatorPool(validator1))}`)
+    console.log(`Validator Pool: ${JSON.stringify(await stakingPool.getValidatorPool(validator1), null, 2)}`)
     console.log(`Ratio: ${(await stakingPool.getRatio(validator1)).toString()}`)
-    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '1010000000000000000');
-    let res = await stakingPool.unstake(validator1, '1010000000000000000'); // 1.01
+    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '50999999999999999950');
+    let res = await stakingPool.unstake(validator1, '50000000000000000000', {from: staker1});
     assert.equal(res.logs[0].args.validator, validator1)
     assert.equal(res.logs[0].args.staker, staker1)
-    assert.equal(res.logs[0].args.amount.toString(), '1010000000000000000')
+    assert.equal(res.logs[0].args.amount.toString(), '50000000000000000000')
     await waitForNextEpoch(parlia);
     res = await stakingPool.claim(validator1, {from: staker1});
     assert.equal(res.logs[0].args.validator, validator1)
     assert.equal(res.logs[0].args.staker, staker1)
-    assert.equal(res.logs[0].args.amount.toString(), '1010000000000000000')
+    assert.equal(res.logs[0].args.amount.toString(), '50000000000000000000')
+    console.log(`Validator Pool: ${JSON.stringify(await stakingPool.getValidatorPool(validator1), null, 2)}`)
+    console.log(`Ratio: ${(await stakingPool.getRatio(validator1)).toString()}`)
+    // rest can't be claimed due to rounding problem
+    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '1000000000000000000');
   })
 });

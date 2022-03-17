@@ -161,7 +161,8 @@ type genesisConfig struct {
 	ConsensusParams consensusParams
 	VotingPeriod    int64
 	Faucet          map[common.Address]string
-	Bootnodes       []string
+	CommissionRate  int64
+	InitialStake    int64
 }
 
 func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}) {
@@ -179,10 +180,11 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	// extra data
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
-	genesis.BootNodes = config.Bootnodes
 	// execute system contracts
-	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]"}, []interface{}{
+	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint16", "uint256"}, []interface{}{
 		config.Validators,
+		uint16(config.CommissionRate),
+		big.NewInt(config.InitialStake),
 	})
 	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint64", "uint64"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
@@ -191,8 +193,8 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.FelonyThreshold,
 		config.ConsensusParams.ValidatorJailEpochLength,
 		config.ConsensusParams.UndelegatePeriod,
-		config.ConsensusParams.MinValidatorStakeAmount * 1e18,
-		config.ConsensusParams.MinStakingAmount * 1e18,
+		config.ConsensusParams.MinValidatorStakeAmount,
+		config.ConsensusParams.MinStakingAmount,
 	})
 	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{})
 	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{})
@@ -281,8 +283,6 @@ var devnetConfig = genesisConfig{
 	},
 	// owner of the governance
 	VotingPeriod: 20, // 1 minute
-	// bootnodes
-	Bootnodes: []string{},
 	// faucet
 	Faucet: map[common.Address]string{},
 }
@@ -312,8 +312,6 @@ var testnetConfig = genesisConfig{
 	},
 	// owner of the governance
 	VotingPeriod: 60, // 3 minutes
-	// bootnodes
-	Bootnodes: []string{},
 	// faucet
 	Faucet: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",    // governance
