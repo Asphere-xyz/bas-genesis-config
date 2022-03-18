@@ -73,16 +73,4 @@ contract("Staking", async (accounts) => {
       '0x0000000000000000000000000000000000000002',
     ])
   })
-  it("test contract genesis creation", async () => {
-    const Staking = artifacts.require("Staking");
-    await Staking.new(
-      [
-        '0x0000000000000000000000000000000000000001',
-        '0x0000000000000000000000000000000000000002',
-        '0x0000000000000000000000000000000000000003',
-      ],
-      '0',
-      '0',
-    );
-  })
 });

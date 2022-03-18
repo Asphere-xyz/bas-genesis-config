@@ -1,5 +1,7 @@
 /** @var web3 {Web3} */
 const BigNumber = require("bignumber.js");
+const {keccak256} = require('ethereumjs-util');
+const AbiCoder = require('web3-eth-abi');
 
 const ChainConfig = artifacts.require("ChainConfig");
 const Staking = artifacts.require("Staking");
@@ -8,6 +10,8 @@ const SystemReward = artifacts.require("SystemReward");
 const Governance = artifacts.require("Governance");
 const StakingPool = artifacts.require("StakingPool");
 const FakeStaking = artifacts.require("FakeStaking");
+const RuntimeUpgrade = artifacts.require("RuntimeUpgrade");
+const DeployerProxy = artifacts.require("DeployerProxy");
 
 const DEFAULT_MOCK_PARAMS = {
   systemTreasury: '0x0000000000000000000000000000000000000000',
@@ -29,7 +33,15 @@ const DEFAULT_CONTRACT_TYPES = {
   SystemReward: SystemReward,
   Governance: Governance,
   StakingPool: StakingPool,
+  RuntimeUpgrade: RuntimeUpgrade,
+  DeployerProxy: DeployerProxy,
 };
+
+const createConstructorArgs = (types, args) => {
+  const params = AbiCoder.encodeParameters(types, args)
+  const sig = '0x' + keccak256(Buffer.from('ctor(' + types.join(',') + ')')).toString('hex').substring(0, 8)
+  return sig + params.substring(2)
+}
 
 const newContractUsingTypes = async (owner, params, types = {}) => {
   const {
@@ -39,6 +51,8 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     SystemReward,
     Governance,
     StakingPool,
+    RuntimeUpgrade,
+    DeployerProxy,
   } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
   const {
     systemTreasury,
@@ -53,14 +67,19 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     minStakingAmount,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
-  const staking = await Staking.new(genesisValidators, '0', '0');
-  const slashingIndicator = await SlashingIndicator.new();
-  const systemReward = await SystemReward.new(systemTreasury);
-  const governance = await Governance.new(1);
-  const chainConfig = await ChainConfig.new(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount);
-  const stakingPool = await StakingPool.new();
+  const staking = await Staking.new(createConstructorArgs(['address[]', 'uint16', 'uint256'], [genesisValidators, '0', '0']));
+  const slashingIndicator = await SlashingIndicator.new(createConstructorArgs([], []));
+  const systemReward = await SystemReward.new(createConstructorArgs(['address'], [systemTreasury]));
+  const governance = await Governance.new(createConstructorArgs(['uint256'], ['1']));
+  const chainConfig = await ChainConfig.new(createConstructorArgs(
+    ["uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint64", "uint64"],
+    [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount])
+  );
+  const stakingPool = await StakingPool.new(createConstructorArgs([], []));
+  const runtimeUpgrade = await RuntimeUpgrade.new(createConstructorArgs([], []));
+  const deployerProxy = await DeployerProxy.new(createConstructorArgs(['address[]'], [[]]));
   // init them all
-  for (const contract of [chainConfig, staking, slashingIndicator, systemReward, stakingPool, governance]) {
+  for (const contract of [slashingIndicator, staking, systemReward, stakingPool, governance, chainConfig, runtimeUpgrade, deployerProxy]) {
     await contract.initManually(
       staking.address,
       slashingIndicator.address,
@@ -68,6 +87,8 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
       stakingPool.address,
       governance.address,
       chainConfig.address,
+      runtimeUpgrade.address,
+      deployerProxy.address,
     );
   }
   return {
@@ -79,6 +100,8 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     governance,
     chainConfig,
     config: chainConfig,
+    runtimeUpgrade,
+    deployerProxy,
   }
 }
 
@@ -151,5 +174,6 @@ module.exports = {
   extractTxCost,
   waitForNextEpoch,
   advanceBlock,
+  createConstructorArgs,
   advanceBlocks,
 }

@@ -8,7 +8,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     constructor(bytes memory ctor) InjectorContextHolder(ctor) {
     }
 
-    function initialize() external whenNotInitialized {
+    function ctor() external whenNotInitialized {
     }
 
     function upgradeSystemSmartContract(

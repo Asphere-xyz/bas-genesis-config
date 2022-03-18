@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"reflect"
 	"strings"
+	"unicode"
 	"unsafe"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -84,7 +85,12 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
 	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
-		println(string(deployedBytecode))
+		for _, c := range deployedBytecode[64:] {
+			if c >= 32 && c <= unicode.MaxASCII {
+				print(string(c))
+			}
+		}
+		println()
 		return err
 	}
 	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(systemContract))
@@ -99,6 +105,17 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		genesis.Alloc = make(core.GenesisAlloc)
 	}
 	genesis.Alloc[systemContract] = genesisAccount
+	// make sure ctor working fine (better to fail here instead of in consensus engine)
+	errorCode, _, err := evm.Call(vm.AccountRef(common.Address{}), systemContract, hexutil.MustDecode("0xe1c7392a"), 1_000_000, big.NewInt(0))
+	if err != nil {
+		for _, c := range errorCode[64:] {
+			if c >= 32 && c <= unicode.MaxASCII {
+				print(string(c))
+			}
+		}
+		println()
+		return err
+	}
 	return nil
 }
 
@@ -109,6 +126,7 @@ var stakingPoolAddress = common.HexToAddress("0x00000000000000000000000000000000
 var governanceAddress = common.HexToAddress("0x0000000000000000000000000000000000007002")
 var chainConfigAddress = common.HexToAddress("0x0000000000000000000000000000000000007003")
 var runtimeUpgradeAddress = common.HexToAddress("0x0000000000000000000000000000000000007004")
+var deployerProxyAddress = common.HexToAddress("0x0000000000000000000000000000000000007005")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 
 //go:embed build/contracts/Staking.json
@@ -131,6 +149,9 @@ var governanceRawArtifact []byte
 
 //go:embed build/contracts/RuntimeUpgrade.json
 var runtimeUpgradeRawArtifact []byte
+
+//go:embed build/contracts/DeployerProxy.json
+var deployerProxyRawArtifact []byte
 
 func newArguments(typeNames ...string) abi.Arguments {
 	var args abi.Arguments
@@ -172,11 +193,13 @@ func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, ra
 	if err != nil {
 		panic(err)
 	}
-	ctor = append(crypto.Keccak256([]byte(fmt.Sprintf("initialize(%s)", strings.Join(typeNames, ","))))[:4], ctor...)
+	sig := crypto.Keccak256([]byte(fmt.Sprintf("ctor(%s)", strings.Join(typeNames, ","))))[:4]
+	ctor = append(sig, ctor...)
 	ctor, err = newArguments("bytes").Pack(ctor)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf(" + calling constructor: address=%s sig=%s ctor=%s\n", contract.Hex(), hexutil.Encode(sig), hexutil.Encode(ctor))
 	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor); err != nil {
 		panic(err)
 	}
@@ -212,6 +235,9 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		big.NewInt(config.VotingPeriod),
 	})
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{}, []interface{}{})
+	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
+		config.Deployers,
+	})
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
 		Balance: big.NewInt(0),
@@ -328,10 +354,14 @@ var testnetConfig = genesisConfig{
 }
 
 func main() {
+	println("building devnet")
 	if err := createGenesisConfig(devnetConfig, "devnet.json"); err != nil {
 		panic(err)
 	}
+	println()
+	println("building testnet")
 	if err := createGenesisConfig(testnetConfig, "testnet.json"); err != nil {
 		panic(err)
 	}
+	println()
 }

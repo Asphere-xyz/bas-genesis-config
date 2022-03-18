@@ -30,7 +30,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
     constructor(bytes memory ctor) InjectorContextHolder(ctor) {
     }
 
-    function initialize(
+    function ctor(
         uint32 activeValidatorsLength,
         uint32 epochBlockInterval,
         uint32 misdemeanorThreshold,

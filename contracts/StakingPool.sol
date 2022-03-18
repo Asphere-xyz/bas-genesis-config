@@ -38,6 +38,9 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
     constructor(bytes memory ctor) InjectorContextHolder(ctor) {
     }
 
+    function ctor() external whenNotInitialized {
+    }
+
     function getStakedAmount(address validator, address staker) external view returns (uint256) {
         ValidatorPool memory validatorPool = _getValidatorPool(validator);
         return _stakerShares[validator][staker] * 1e18 / _calcRatio(validatorPool);

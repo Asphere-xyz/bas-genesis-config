@@ -40,14 +40,12 @@ contract("Staking", async (accounts) => {
     assert.equal(res.logs[0].args.validator, validator1);
     assert.equal(res.logs[0].args.staker, staker1);
     assert.equal(res.logs[0].args.amount.toString(), '1000000000000000000');
-    assert.equal(res.logs[0].args.epoch.toString(), '1');
     result = await parlia.getValidatorDelegation(validator1, staker1);
     assert.equal(result.delegatedAmount.toString(), '1000000000000000000')
     res = await parlia.delegate(validator1, {from: staker2, value: '1000000000000000000'});
     assert.equal(res.logs[0].args.validator, validator1);
     assert.equal(res.logs[0].args.staker, staker2);
     assert.equal(res.logs[0].args.amount.toString(), '1000000000000000000');
-    assert.equal(res.logs[0].args.epoch.toString(), '1');
     result = await parlia.getValidatorDelegation(validator1, staker2);
     assert.equal(result.delegatedAmount.toString(), '1000000000000000000')
     // check validator status

@@ -5,9 +5,9 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, expectError, extractTxCost, waitForNextEpoch} = require("./helper");
+const {newMockContract, waitForNextEpoch} = require("./helper");
 
-contract("Staking", async (accounts) => {
+contract("StakingPool", async (accounts) => {
   const [owner, staker1, staker2, validator1] = accounts
   it("empty delegator claim should work", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50'})

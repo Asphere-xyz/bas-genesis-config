@@ -109,7 +109,7 @@ contract Staking is IStaking, InjectorContextHolder {
     constructor(bytes memory ctor) InjectorContextHolder(ctor) {
     }
 
-    function initialize(address[] memory validators, uint16 commissionRate, uint256 initialStake) external whenNotInitialized {
+    function ctor(address[] memory validators, uint16 commissionRate, uint256 initialStake) external whenNotInitialized {
         require(initialStake % BALANCE_COMPACT_PRECISION == 0);
         // init validators
         for (uint256 i = 0; i < validators.length; i++) {

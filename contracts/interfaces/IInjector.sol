@@ -5,6 +5,7 @@ import "./ISlashingIndicator.sol";
 import "./ISystemReward.sol";
 import "./IGovernance.sol";
 import "./IStaking.sol";
+import "./IDeployerProxy.sol";
 import "./IStakingPool.sol";
 import "./IChainConfig.sol";
 

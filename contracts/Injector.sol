@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import "./interfaces/IChainConfig.sol";
-import "./interfaces/IEvmHooks.sol";
 import "./interfaces/IGovernance.sol";
 import "./interfaces/ISlashingIndicator.sol";
 import "./interfaces/ISystemReward.sol";
@@ -11,6 +10,7 @@ import "./interfaces/IStaking.sol";
 import "./interfaces/IRuntimeUpgrade.sol";
 import "./interfaces/IStakingPool.sol";
 import "./interfaces/IInjector.sol";
+import "./interfaces/IDeployerProxy.sol";
 
 abstract contract AlreadyInit {
 
@@ -43,17 +43,18 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
     IGovernance internal _governanceContract;
     IChainConfig internal _chainConfigContract;
     IRuntimeUpgrade internal _runtimeUpgradeContract;
+    IDeployerProxy internal _deployerProxyContract;
 
     // already init (1) + injector (7) = 8
     uint256[100 - 8] private __reserved;
 
-    constructor(bytes memory ctor) {
-        // if ctor is specified then lets test its correctness
-        if (ctor.length > 0) {
-            (bool success, ) = address(this).staticcall(ctor);
-            require(success);
-        }
-        _ctor = ctor;
+    constructor(bytes memory constructorParams) {
+        // save constructor params to use them in the init function
+        _ctor = constructorParams;
+    }
+
+    function getCtor() external view returns (bytes memory) {
+        return _ctor;
     }
 
     function init() external whenNotInitialized {
@@ -66,6 +67,7 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         _governanceContract = IGovernance(0x0000000000000000000000000000000000007002);
         _chainConfigContract = IChainConfig(0x0000000000000000000000000000000000007003);
         _runtimeUpgradeContract = IRuntimeUpgrade(0x0000000000000000000000000000000000007004);
+        _deployerProxyContract = IDeployerProxy(0x0000000000000000000000000000000000007005);
         // invoke constructor
         _invokeContractConstructor();
     }
@@ -77,7 +79,8 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         IStakingPool stakingPoolContract,
         IGovernance governanceContract,
         IChainConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
     ) public whenNotInitialized {
         // BSC-compatible
         _stakingContract = stakingContract;
@@ -88,14 +91,27 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         _governanceContract = governanceContract;
         _chainConfigContract = chainConfigContract;
         _runtimeUpgradeContract = runtimeUpgradeContract;
+        _deployerProxyContract = deployerProxyContract;
         // invoke constructor
         _invokeContractConstructor();
     }
 
     function _invokeContractConstructor() internal {
-        if (_ctor.length == 0) return;
-        (bool success,) = address(this).call(_ctor);
-        require(success, "Injector: construction failed");
+        if (_ctor.length == 0) {
+            return;
+        }
+        (bool success, bytes memory returnData) = address(this).call(_ctor);
+        // if everything is success then just exit w/o revert
+        if (success) {
+            return;
+        }
+        if (returnData.length == 0) {
+            revert("Injector: construction failed w/ unknown error");
+        }
+        assembly {
+            let returnDataSize := mload(returnData)
+            revert(add(32, returnData), returnDataSize)
+        }
     }
 
     function isInitialized() external view returns (bool) {
