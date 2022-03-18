@@ -5,10 +5,10 @@ import "./Injector.sol";
 
 contract SlashingIndicator is ISlashingIndicator, InjectorContextHolder {
 
-    constructor() {
+    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
     }
 
-    function slash(address validator) external onlyFromCoinbase onlyOncePerBlock virtual override {
+    function slash(address validator) external onlyFromCoinbase virtual override {
         // we need this proxy to be compatible with BSC
         _stakingContract.slash(validator);
     }

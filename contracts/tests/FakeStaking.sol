@@ -5,7 +5,7 @@ import "../Staking.sol";
 
 contract FakeStaking is Staking {
 
-    constructor(address[] memory validators, uint16 commissionRate, uint256 initialStake) Staking(validators, commissionRate, initialStake) {
+    constructor(bytes memory ctor) Staking(ctor) {
     }
 
     function addValidator(address account) external override {

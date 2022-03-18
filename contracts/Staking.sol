@@ -106,7 +106,10 @@ contract Staking is IStaking, InjectorContextHolder {
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
 
-    constructor(address[] memory validators, uint16 commissionRate, uint256 initialStake) {
+    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    }
+
+    function initialize(address[] memory validators, uint16 commissionRate, uint256 initialStake) external whenNotInitialized {
         require(initialStake % BALANCE_COMPACT_PRECISION == 0);
         // init validators
         for (uint256 i = 0; i < validators.length; i++) {

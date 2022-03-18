@@ -5,6 +5,12 @@ import "./Injector.sol";
 
 contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
+    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    }
+
+    function initialize() external whenNotInitialized {
+    }
+
     function upgradeSystemSmartContract(
         address systemContractAddress,
         bytes memory newByteCode,

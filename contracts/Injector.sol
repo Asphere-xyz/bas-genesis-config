@@ -12,10 +12,27 @@ import "./interfaces/IRuntimeUpgrade.sol";
 import "./interfaces/IStakingPool.sol";
 import "./interfaces/IInjector.sol";
 
-abstract contract InjectorContextHolder is IInjector {
+abstract contract AlreadyInit {
 
-    bool private _init;
-    uint256 private _operatingBlock;
+    // flag indicating is smart contract initialized already
+    bool internal _init;
+
+    modifier whenNotInitialized() {
+        require(!_init, "Injector: already initialized");
+        _;
+        _init = true;
+    }
+
+    modifier whenInitialized() {
+        require(_init, "Injector: not initialized yet");
+        _;
+    }
+}
+
+abstract contract InjectorContextHolder is AlreadyInit, IInjector {
+
+    // system smart contract constructor
+    bytes internal _ctor;
 
     // BSC compatible contracts
     IStaking internal _stakingContract;
@@ -27,7 +44,17 @@ abstract contract InjectorContextHolder is IInjector {
     IChainConfig internal _chainConfigContract;
     IRuntimeUpgrade internal _runtimeUpgradeContract;
 
+    // already init (1) + injector (7) = 8
     uint256[100 - 8] private __reserved;
+
+    constructor(bytes memory ctor) {
+        // if ctor is specified then lets test its correctness
+        if (ctor.length > 0) {
+            (bool success, ) = address(this).staticcall(ctor);
+            require(success);
+        }
+        _ctor = ctor;
+    }
 
     function init() external whenNotInitialized {
         // BSC compatible addresses
@@ -39,10 +66,8 @@ abstract contract InjectorContextHolder is IInjector {
         _governanceContract = IGovernance(0x0000000000000000000000000000000000007002);
         _chainConfigContract = IChainConfig(0x0000000000000000000000000000000000007003);
         _runtimeUpgradeContract = IRuntimeUpgrade(0x0000000000000000000000000000000000007004);
-    }
-
-    function isInitialized() external view returns (bool) {
-        return _init;
+        // invoke constructor
+        _invokeContractConstructor();
     }
 
     function initManually(
@@ -63,6 +88,18 @@ abstract contract InjectorContextHolder is IInjector {
         _governanceContract = governanceContract;
         _chainConfigContract = chainConfigContract;
         _runtimeUpgradeContract = runtimeUpgradeContract;
+        // invoke constructor
+        _invokeContractConstructor();
+    }
+
+    function _invokeContractConstructor() internal {
+        if (_ctor.length == 0) return;
+        (bool success,) = address(this).call(_ctor);
+        require(success, "Injector: construction failed");
+    }
+
+    function isInitialized() external view returns (bool) {
+        return _init;
     }
 
     modifier onlyFromCoinbase() {
@@ -83,23 +120,6 @@ abstract contract InjectorContextHolder is IInjector {
     modifier onlyZeroGasPrice() {
         require(tx.gasprice == 0, "InjectorContextHolder: only zero gas price");
         _;
-    }
-
-    modifier whenNotInitialized() {
-        require(!_init, "OnlyInit: already initialized");
-        _;
-        _init = true;
-    }
-
-    modifier whenInitialized() {
-        require(_init, "OnlyInit: not initialized yet");
-        _;
-    }
-
-    modifier onlyOncePerBlock() {
-        require(block.number > _operatingBlock, "InjectorContextHolder: only once per block");
-        _;
-        _operatingBlock = block.number;
     }
 
     function getStaking() public view returns (IStaking) {

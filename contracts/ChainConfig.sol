@@ -27,7 +27,10 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
 
     ConsensusParams private _consensusParams;
 
-    constructor(
+    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    }
+
+    function initialize(
         uint32 activeValidatorsLength,
         uint32 epochBlockInterval,
         uint32 misdemeanorThreshold,
@@ -36,7 +39,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 undelegatePeriod,
         uint64 minValidatorStakeAmount,
         uint64 minStakingAmount
-    ) {
+    ) external whenNotInitialized {
         _consensusParams.activeValidatorsLength = activeValidatorsLength;
         emit ActiveValidatorsLengthChanged(0, activeValidatorsLength);
         _consensusParams.epochBlockInterval = epochBlockInterval;

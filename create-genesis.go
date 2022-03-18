@@ -4,10 +4,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/crypto"
 	"io/fs"
 	"io/ioutil"
 	"math/big"
 	"reflect"
+	"strings"
 	"unsafe"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -82,20 +84,16 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
 	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
+		println(string(deployedBytecode))
 		return err
 	}
 	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(systemContract))
-	logs := statedb.Logs()
 	// read state changes from state database
 	genesisAccount := core.GenesisAccount{
 		Code:    deployedBytecode,
 		Storage: storage,
 		Balance: big.NewInt(0),
 		Nonce:   0,
-		// it might bring some incompatibility to other Geth implementations like Erigon, I'm not sure do we need to
-		// keep it, but it might be important because genesis contracts produces events, and it's better to save them if
-		// its supported
-		Logs: logs,
 	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
@@ -110,6 +108,7 @@ var systemRewardAddress = common.HexToAddress("0x0000000000000000000000000000000
 var stakingPoolAddress = common.HexToAddress("0x0000000000000000000000000000000000007001")
 var governanceAddress = common.HexToAddress("0x0000000000000000000000000000000000007002")
 var chainConfigAddress = common.HexToAddress("0x0000000000000000000000000000000000007003")
+var runtimeUpgradeAddress = common.HexToAddress("0x0000000000000000000000000000000000007004")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 
 //go:embed build/contracts/Staking.json
@@ -129,6 +128,9 @@ var systemRewardRawArtifact []byte
 
 //go:embed build/contracts/Governance.json
 var governanceRawArtifact []byte
+
+//go:embed build/contracts/RuntimeUpgrade.json
+var runtimeUpgradeRawArtifact []byte
 
 func newArguments(typeNames ...string) abi.Arguments {
 	var args abi.Arguments
@@ -170,6 +172,11 @@ func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, ra
 	if err != nil {
 		panic(err)
 	}
+	ctor = append(crypto.Keccak256([]byte(fmt.Sprintf("initialize(%s)", strings.Join(typeNames, ","))))[:4], ctor...)
+	ctor, err = newArguments("bytes").Pack(ctor)
+	if err != nil {
+		panic(err)
+	}
 	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor); err != nil {
 		panic(err)
 	}
@@ -204,6 +211,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
 		big.NewInt(config.VotingPeriod),
 	})
+	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{}, []interface{}{})
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
 		Balance: big.NewInt(0),
