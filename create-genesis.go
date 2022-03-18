@@ -97,7 +97,7 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	// read state changes from state database
 	genesisAccount := core.GenesisAccount{
 		Code:    deployedBytecode,
-		Storage: storage,
+		Storage: storage.Copy(),
 		Balance: big.NewInt(0),
 		Nonce:   0,
 	}
