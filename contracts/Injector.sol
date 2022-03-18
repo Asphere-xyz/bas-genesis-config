@@ -117,6 +117,11 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         _;
     }
 
+    modifier onlyFromRuntimeUpgrade() {
+        require(IRuntimeUpgrade(msg.sender) == _runtimeUpgradeContract, "InjectorContextHolder: only runtime upgrade");
+        _;
+    }
+
     modifier onlyZeroGasPrice() {
         require(tx.gasprice == 0, "InjectorContextHolder: only zero gas price");
         _;
