@@ -141,21 +141,21 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
         _enableContract(impl);
     }
 
-    function _disableContract(address contractAdress) internal {
-        SmartContract memory dc = _smartContracts[contractAdress];
+    function _disableContract(address contractAddress) internal {
+        SmartContract memory dc = _smartContracts[contractAddress];
         require(dc.state == ContractState.Enabled, "Deployer: contract already disabled");
         dc.state = ContractState.Disabled;
-        _smartContracts[contractAdress] = dc;
+        _smartContracts[contractAddress] = dc;
         //emit event
-        emit ContractDisabled(contractAdress);
+        emit ContractDisabled(contractAddress);
     }
 
-    function _enableContract(address contractAdress) internal {
-        SmartContract memory dc = _smartContracts[contractAdress];
+    function _enableContract(address contractAddress) internal {
+        SmartContract memory dc = _smartContracts[contractAddress];
         require(dc.state == ContractState.Disabled, "Deployer: contract already enabled");
         dc.state = ContractState.Enabled;
-        _smartContracts[contractAdress] = dc;
+        _smartContracts[contractAddress] = dc;
         //emit event
-        emit ContractEnabled(contractAdress);
+        emit ContractEnabled(contractAddress);
     }
 }

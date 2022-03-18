@@ -9,9 +9,10 @@ const SlashingIndicator = artifacts.require("SlashingIndicator");
 const SystemReward = artifacts.require("SystemReward");
 const Governance = artifacts.require("Governance");
 const StakingPool = artifacts.require("StakingPool");
-const FakeStaking = artifacts.require("FakeStaking");
 const RuntimeUpgrade = artifacts.require("RuntimeUpgrade");
 const DeployerProxy = artifacts.require("DeployerProxy");
+const FakeStaking = artifacts.require("FakeStaking");
+const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
 
 const DEFAULT_MOCK_PARAMS = {
   systemTreasury: '0x0000000000000000000000000000000000000000',
@@ -24,6 +25,7 @@ const DEFAULT_MOCK_PARAMS = {
   minValidatorStakeAmount: '1',
   minStakingAmount: '1',
   genesisValidators: [],
+  genesisDeployers: [],
 };
 
 const DEFAULT_CONTRACT_TYPES = {
@@ -55,6 +57,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     DeployerProxy,
   } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
   const {
+    genesisDeployers,
     systemTreasury,
     activeValidatorsLength,
     epochBlockInterval,
@@ -77,7 +80,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   );
   const stakingPool = await StakingPool.new(createConstructorArgs([], []));
   const runtimeUpgrade = await RuntimeUpgrade.new(createConstructorArgs([], []));
-  const deployerProxy = await DeployerProxy.new(createConstructorArgs(['address[]'], [[]]));
+  const deployerProxy = await DeployerProxy.new(createConstructorArgs(['address[]'], [genesisDeployers]));
   // init them all
   for (const contract of [slashingIndicator, staking, systemReward, stakingPool, governance, chainConfig, runtimeUpgrade, deployerProxy]) {
     await contract.initManually(
@@ -101,6 +104,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     chainConfig,
     config: chainConfig,
     runtimeUpgrade,
+    deployer: deployerProxy,
     deployerProxy,
   }
 }
@@ -108,6 +112,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
 const newMockContract = async (owner, params = {}) => {
   return newContractUsingTypes(owner, params, {
     Staking: FakeStaking,
+    DeployerProxy: FakeDeployerProxy,
   });
 }
 

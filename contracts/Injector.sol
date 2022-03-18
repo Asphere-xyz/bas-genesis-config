@@ -53,10 +53,6 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         _ctor = constructorParams;
     }
 
-    function getCtor() external view returns (bytes memory) {
-        return _ctor;
-    }
-
     function init() external whenNotInitialized {
         // BSC compatible addresses
         _stakingContract = IStaking(0x0000000000000000000000000000000000001000);
