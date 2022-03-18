@@ -6,6 +6,7 @@ const Staking = artifacts.require("Staking");
 const SlashingIndicator = artifacts.require("SlashingIndicator");
 const SystemReward = artifacts.require("SystemReward");
 const Governance = artifacts.require("Governance");
+const StakingPool = artifacts.require("StakingPool");
 const FakeStaking = artifacts.require("FakeStaking");
 
 const DEFAULT_MOCK_PARAMS = {
@@ -27,6 +28,7 @@ const DEFAULT_CONTRACT_TYPES = {
   SlashingIndicator: SlashingIndicator,
   SystemReward: SystemReward,
   Governance: Governance,
+  StakingPool: StakingPool,
 };
 
 const newContractUsingTypes = async (owner, params, types = {}) => {
@@ -35,7 +37,8 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     Staking,
     SlashingIndicator,
     SystemReward,
-    Governance
+    Governance,
+    StakingPool,
   } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
   const {
     systemTreasury,
@@ -50,17 +53,19 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     minStakingAmount,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
-  const staking = await Staking.new(genesisValidators);
+  const staking = await Staking.new(genesisValidators, '0', '0');
   const slashingIndicator = await SlashingIndicator.new();
   const systemReward = await SystemReward.new(systemTreasury);
   const governance = await Governance.new(1);
   const chainConfig = await ChainConfig.new(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount);
+  const stakingPool = await StakingPool.new();
   // init them all
-  for (const contract of [chainConfig, staking, slashingIndicator, systemReward, governance]) {
+  for (const contract of [chainConfig, staking, slashingIndicator, systemReward, stakingPool, governance]) {
     await contract.initManually(
       staking.address,
       slashingIndicator.address,
       systemReward.address,
+      stakingPool.address,
       governance.address,
       chainConfig.address,
     );
@@ -70,6 +75,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     parlia: staking,
     slashingIndicator,
     systemReward,
+    stakingPool,
     governance,
     chainConfig,
     config: chainConfig,

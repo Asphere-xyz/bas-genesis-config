@@ -445,7 +445,6 @@ contract("Staking", async (accounts) => {
     const costOfClaims = [1, 10]
     for (const blocks of costOfClaims) {
       for (let i = 0; i < blocks; i++) {
-        console.log(`Depositing 1 ether: ${i}/${blocks}`);
         await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1.0
       }
       const result = await parlia.claimDelegatorFee(validator1, {from: staker1})
