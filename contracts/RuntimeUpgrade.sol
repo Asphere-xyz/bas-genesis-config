@@ -3,9 +3,17 @@ pragma solidity ^0.8.0;
 
 import "./Injector.sol";
 
+interface IRuntimeUpgradeEvmHook {
+    function upgradeTo(address contractAddress, bytes calldata byteCode) external;
+}
+
 contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    address constant internal EVM_HOOK_RUNTIME_UPGRADE_ADDRESS = 0x0000000000000000000000000000000000007f01;
+
+    event SmartContractUpgrade(address contractAddress, bytes newByteCode);
+
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
     function ctor() external whenNotInitialized {
@@ -18,7 +26,8 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     ) external onlyFromGovernance {
         IInjector injector = IInjector(systemContractAddress);
         // emit special runtime upgrade event that modifies bytecode
-        emit RuntimeUpgrade(systemContractAddress, newByteCode);
+        require(_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only system smart contract");
+        IRuntimeUpgradeEvmHook(EVM_HOOK_RUNTIME_UPGRADE_ADDRESS).upgradeTo(systemContractAddress, newByteCode);
         // if this is new smart contract then run "init" function
         if (!injector.isInitialized()) {
             injector.init();
@@ -28,5 +37,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
             (bool result,) = systemContractAddress.call(applyFunction);
             require(result, "RuntimeUpgrade: migration failed");
         }
+        // emit event
+        emit SmartContractUpgrade(systemContractAddress, newByteCode);
     }
 }

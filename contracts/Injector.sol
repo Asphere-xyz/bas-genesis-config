@@ -92,6 +92,29 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         _invokeContractConstructor();
     }
 
+    function getSystemContracts() public view override returns (address[] memory) {
+        address[] memory result = new address[](8);
+        // BSC-compatible
+        result[0] = address(_stakingContract);
+        result[1] = address(_slashingIndicatorContract);
+        result[2] = address(_systemRewardContract);
+        // BAS-defined
+        result[3] = address(_stakingPoolContract);
+        result[4] = address(_governanceContract);
+        result[5] = address(_chainConfigContract);
+        result[6] = address(_runtimeUpgradeContract);
+        result[7] = address(_deployerProxyContract);
+        return result;
+    }
+
+    function _isSystemSmartContract(address contractAddress) internal returns (bool) {
+        address[] memory systemContracts = getSystemContracts();
+        for (uint256 i = 0; i < systemContracts.length; i++) {
+            if (systemContracts[i] == contractAddress) return true;
+        }
+        return false;
+    }
+
     function _invokeContractConstructor() internal {
         if (_ctor.length == 0) {
             return;

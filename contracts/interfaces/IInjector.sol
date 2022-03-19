@@ -15,6 +15,8 @@ interface IInjector {
 
     function isInitialized() external view returns (bool);
 
+    function getSystemContracts() external view returns (address[] memory);
+
     function getStaking() external view returns (IStaking);
 
     function getSlashingIndicator() external view returns (ISlashingIndicator);
