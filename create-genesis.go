@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/tracers"
 	"io/fs"
 	"io/ioutil"
 	"math/big"
@@ -12,6 +12,10 @@ import (
 	"strings"
 	"unicode"
 	"unsafe"
+
+	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
+
+	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -82,7 +86,14 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	txContext := core.NewEVMTxContext(
 		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
 	)
-	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
+	tracer, err := tracers.New("callTracer", nil)
+	if err != nil {
+		return err
+	}
+	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{
+		Debug:  true,
+		Tracer: tracer,
+	})
 	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
 		for _, c := range deployedBytecode[64:] {
@@ -106,7 +117,7 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	}
 	genesis.Alloc[systemContract] = genesisAccount
 	// make sure ctor working fine (better to fail here instead of in consensus engine)
-	errorCode, _, err := evm.Call(vm.AccountRef(common.Address{}), systemContract, hexutil.MustDecode("0xe1c7392a"), 1_000_000, big.NewInt(0))
+	errorCode, _, err := evm.Call(vm.AccountRef(common.Address{}), systemContract, hexutil.MustDecode("0xe1c7392a"), 10_000_000, big.NewInt(0))
 	if err != nil {
 		for _, c := range errorCode[64:] {
 			if c >= 32 && c <= unicode.MaxASCII {
@@ -214,7 +225,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint16", "uint256"}, []interface{}{
 		config.Validators,
 		uint16(config.CommissionRate),
-		big.NewInt(config.InitialStake),
+		new(big.Int).Mul(big.NewInt(config.InitialStake), big.NewInt(1e18)),
 	})
 	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint64", "uint64"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
@@ -315,10 +326,15 @@ var devnetConfig = genesisConfig{
 		MinValidatorStakeAmount:  1,
 		MinStakingAmount:         1,
 	},
+	InitialStake: 1_000_000,
 	// owner of the governance
 	VotingPeriod: 20, // 1 minute
 	// faucet
-	Faucet: map[common.Address]string{},
+	Faucet: map[common.Address]string{
+		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x21e19e0c9bab2400000",
+		common.HexToAddress("0x57BA24bE2cF17400f37dB3566e839bfA6A2d018a"): "0x21e19e0c9bab2400000",
+		common.HexToAddress("0xEbCf9D06cf9333706E61213F17A795B2F7c55F1b"): "0x21e19e0c9bab2400000",
+	},
 }
 
 var testnetConfig = genesisConfig{
@@ -344,6 +360,7 @@ var testnetConfig = genesisConfig{
 		MinValidatorStakeAmount:  1,     // how many tokens validator must stake to create a validator (in ether)
 		MinStakingAmount:         1,     // minimum staking amount for delegators (in ether)
 	},
+	InitialStake: 1_000_000,
 	// owner of the governance
 	VotingPeriod: 60, // 3 minutes
 	// faucet
