@@ -109,11 +109,11 @@ contract Staking is IStaking, InjectorContextHolder {
     constructor(bytes memory ctor) InjectorContextHolder(ctor) {
     }
 
-    function ctor(address[] memory validators, uint16 commissionRate, uint256 initialStake) external whenNotInitialized {
-        require(initialStake % BALANCE_COMPACT_PRECISION == 0);
-        // init validators
+    function ctor(address[] memory validators, uint256[] calldata initialStakes, uint16 commissionRate) external whenNotInitialized {
+        require(initialStakes.length == validators.length);
         for (uint256 i = 0; i < validators.length; i++) {
-            _addValidator(validators[i], validators[i], ValidatorStatus.Active, commissionRate, uint64(initialStake / BALANCE_COMPACT_PRECISION), 0);
+            require(initialStakes[i] % BALANCE_COMPACT_PRECISION == 0);
+            _addValidator(validators[i], validators[i], ValidatorStatus.Active, commissionRate, uint64(initialStakes[i] / BALANCE_COMPACT_PRECISION), 0);
         }
     }
 

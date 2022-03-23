@@ -22,6 +22,10 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
         return _votingSupply(block.number);
     }
 
+    function getVotingPower(address validator) external view returns (uint256) {
+        return _validatorVotingPowerAt(validator, block.number);
+    }
+
     function proposeWithCustomVotingPeriod(
         address[] memory targets,
         uint256[] memory values,

@@ -196,7 +196,7 @@ type genesisConfig struct {
 	VotingPeriod    int64
 	Faucet          map[common.Address]string
 	CommissionRate  int64
-	InitialStake    int64
+	InitialStakes   map[common.Address]string
 }
 
 func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}) {
@@ -222,10 +222,22 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
-	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint16", "uint256"}, []interface{}{
+	var initialStakes []*big.Int
+	for _, v := range config.Validators {
+		rawInitialStake, ok := config.InitialStakes[v]
+		if !ok {
+			return fmt.Errorf("initial stake is not found for validator: %s", v.Hex())
+		}
+		initialStake, err := hexutil.DecodeBig(rawInitialStake)
+		if err != nil {
+			return err
+		}
+		initialStakes = append(initialStakes, initialStake)
+	}
+	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint256[]", "uint16"}, []interface{}{
 		config.Validators,
+		initialStakes,
 		uint16(config.CommissionRate),
-		new(big.Int).Mul(big.NewInt(config.InitialStake), big.NewInt(1e18)),
 	})
 	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint64", "uint64"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
@@ -326,7 +338,9 @@ var devnetConfig = genesisConfig{
 		MinValidatorStakeAmount:  1,
 		MinStakingAmount:         1,
 	},
-	InitialStake: 1_000_000,
+	InitialStakes: map[common.Address]string{
+		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x3635c9adc5dea00000", // 1000 eth
+	},
 	// owner of the governance
 	VotingPeriod: 20, // 1 minute
 	// faucet
@@ -360,7 +374,13 @@ var testnetConfig = genesisConfig{
 		MinValidatorStakeAmount:  1,     // how many tokens validator must stake to create a validator (in ether)
 		MinStakingAmount:         1,     // minimum staking amount for delegators (in ether)
 	},
-	InitialStake: 1_000_000,
+	InitialStakes: map[common.Address]string{
+		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"): "0x3635c9adc5dea00000", // 1000 eth
+		common.HexToAddress("0x751aaca849b09a3e347bbfe125cf18423cc24b40"): "0x3635c9adc5dea00000", // 1000 eth
+		common.HexToAddress("0xa6ff33e3250cc765052ac9d7f7dfebda183c4b9b"): "0x3635c9adc5dea00000", // 1000 eth
+		common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"): "0x3635c9adc5dea00000", // 1000 eth
+		common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"): "0x3635c9adc5dea00000", // 1000 eth
+	},
 	// owner of the governance
 	VotingPeriod: 60, // 3 minutes
 	// faucet
