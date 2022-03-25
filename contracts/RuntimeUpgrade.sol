@@ -3,32 +3,37 @@ pragma solidity ^0.8.0;
 
 import "./Injector.sol";
 
-interface IRuntimeUpgradeEvmHook {
-    function upgradeTo(address contractAddress, bytes calldata byteCode) external;
-}
-
 contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
-    address constant internal EVM_HOOK_RUNTIME_UPGRADE_ADDRESS = 0x0000000000000000000000000000000000007f01;
-
     event SmartContractUpgrade(address contractAddress, bytes newByteCode);
+
+    address internal _evmHookAddress;
 
     constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
-    function ctor() external whenNotInitialized {
+    function ctor(address evmHookAddress) external whenNotInitialized {
+        _evmHookAddress = evmHookAddress;
     }
 
     function upgradeSystemSmartContract(
         address systemContractAddress,
-        bytes memory newByteCode,
+        bytes calldata newByteCode,
         bytes calldata applyFunction
-    ) external onlyFromGovernance {
-        IInjector injector = IInjector(systemContractAddress);
+    ) external onlyFromGovernance virtual override {
+        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction);
+    }
+
+    function _upgradeSystemSmartContract(
+        address systemContractAddress,
+        bytes calldata newByteCode,
+        bytes calldata applyFunction
+    ) internal {
         // emit special runtime upgrade event that modifies bytecode
         require(_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only system smart contract");
-        IRuntimeUpgradeEvmHook(EVM_HOOK_RUNTIME_UPGRADE_ADDRESS).upgradeTo(systemContractAddress, newByteCode);
+        IRuntimeUpgradeEvmHook(_evmHookAddress).upgradeTo(systemContractAddress, newByteCode);
         // if this is new smart contract then run "init" function
+        IInjector injector = IInjector(systemContractAddress);
         if (!injector.isInitialized()) {
             injector.init();
         }
@@ -39,5 +44,9 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         }
         // emit event
         emit SmartContractUpgrade(systemContractAddress, newByteCode);
+    }
+
+    function getEvmHookAddress() external view returns (address) {
+        return _evmHookAddress;
     }
 }

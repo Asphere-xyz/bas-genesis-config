@@ -13,6 +13,7 @@ const RuntimeUpgrade = artifacts.require("RuntimeUpgrade");
 const DeployerProxy = artifacts.require("DeployerProxy");
 const FakeStaking = artifacts.require("FakeStaking");
 const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
+const FakeRuntimeUpgrade = artifacts.require("FakeRuntimeUpgrade");
 
 const DEFAULT_MOCK_PARAMS = {
   systemTreasury: '0x0000000000000000000000000000000000000000',
@@ -26,6 +27,7 @@ const DEFAULT_MOCK_PARAMS = {
   minStakingAmount: '1',
   genesisValidators: [],
   genesisDeployers: [],
+  runtimeUpgradeEvmHook: '0x0000000000000000000000000000000000000000',
 };
 
 const DEFAULT_CONTRACT_TYPES = {
@@ -68,9 +70,10 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     undelegatePeriod,
     minValidatorStakeAmount,
     minStakingAmount,
+    runtimeUpgradeEvmHook,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
-  const staking = await Staking.new(createConstructorArgs(['address[]', 'uint16', 'uint256'], [genesisValidators, '0', '0']));
+  const staking = await Staking.new(createConstructorArgs(['address[]', 'uint256[]', 'uint16'], [genesisValidators, genesisValidators.map(() => '0'), '0']));
   const slashingIndicator = await SlashingIndicator.new(createConstructorArgs([], []));
   const systemReward = await SystemReward.new(createConstructorArgs(['address'], [systemTreasury]));
   const governance = await Governance.new(createConstructorArgs(['uint256'], ['1']));
@@ -79,7 +82,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount])
   );
   const stakingPool = await StakingPool.new(createConstructorArgs([], []));
-  const runtimeUpgrade = await RuntimeUpgrade.new(createConstructorArgs([], []));
+  const runtimeUpgrade = await RuntimeUpgrade.new(createConstructorArgs(['address'], [runtimeUpgradeEvmHook]));
   const deployerProxy = await DeployerProxy.new(createConstructorArgs(['address[]'], [genesisDeployers]));
   // init them all
   for (const contract of [slashingIndicator, staking, systemReward, stakingPool, governance, chainConfig, runtimeUpgrade, deployerProxy]) {
@@ -112,6 +115,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
 const newMockContract = async (owner, params = {}) => {
   return newContractUsingTypes(owner, params, {
     Staking: FakeStaking,
+    RuntimeUpgrade: FakeRuntimeUpgrade,
     DeployerProxy: FakeDeployerProxy,
   });
 }

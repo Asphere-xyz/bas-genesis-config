@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	systemcontract2 "github.com/ethereum/go-ethereum/common/systemcontract"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"io/fs"
 	"io/ioutil"
@@ -257,7 +258,9 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
 		big.NewInt(config.VotingPeriod),
 	})
-	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{}, []interface{}{})
+	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
+		systemcontract2.EvmHookRuntimeUpgradeAddress,
+	})
 	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
 	})
