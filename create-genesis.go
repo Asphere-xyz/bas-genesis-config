@@ -356,7 +356,7 @@ var devnetConfig = genesisConfig{
 }
 
 var testnetConfig = genesisConfig{
-	Genesis: defaultGenesisConfig(17242),
+	Genesis: defaultGenesisConfig(14000),
 	// who is able to deploy smart contract from genesis block (it won't generate event log)
 	Deployers: []common.Address{},
 	// list of default validators (it won't generate event log)
