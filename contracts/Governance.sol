@@ -74,7 +74,7 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
         }
         // find validator votes at block number
         uint64 epoch = uint64(blockNumber / _chainConfigContract.getEpochBlockInterval());
-        (,,uint256 totalDelegated,,,,) = _stakingContract.getValidatorStatusAtEpoch(validator, epoch);
+        (,,uint256 totalDelegated,,,,,) = _stakingContract.getValidatorStatusAtEpoch(validator, epoch);
         // use total delegated amount is a voting power
         return totalDelegated;
     }
