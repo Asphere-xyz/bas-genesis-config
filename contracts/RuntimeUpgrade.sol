@@ -29,9 +29,12 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         bytes calldata newByteCode,
         bytes calldata applyFunction
     ) internal {
-        // emit special runtime upgrade event that modifies bytecode
+        // we allow to upgrade only system smart contracts
         require(_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only system smart contract");
-        IRuntimeUpgradeEvmHook(_evmHookAddress).upgradeTo(systemContractAddress, newByteCode);
+        // modify bytecode using EVM hook
+        bytes memory inputData = abi.encodeWithSelector(IRuntimeUpgradeEvmHook.upgradeTo.selector, systemContractAddress, newByteCode);
+        (bool result,) = address(_evmHookAddress).call(inputData);
+        require(result, "RuntimeUpgrade: failed to invoke EVM hook");
         // if this is new smart contract then run "init" function
         IInjector injector = IInjector(systemContractAddress);
         if (!injector.isInitialized()) {

@@ -299,6 +299,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+		RuntimeUpgradeBlock: big.NewInt(0),
 		Parlia: &params.ParliaConfig{
 			Period: 3,
 			// epoch length is managed by consensus params
