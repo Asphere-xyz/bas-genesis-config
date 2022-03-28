@@ -312,20 +312,27 @@ contract("Staking", async (accounts) => {
     assert.equal(validatorFee.toString(), '0')
   });
   it("incorrect staking amounts", async () => {
-    const {parlia} = await newMockContract(owner)
+    const {parlia} = await newMockContract(owner, {
+      minValidatorStakeAmount: '0',
+      minStakingAmount: '0',
+    })
     await parlia.addValidator(validator1);
+    await parlia.delegate(validator1, {
+      from: staker1,
+      value: '10000000000'
+    }) // 0.00000001
     await expectError(parlia.delegate(validator1, {
       from: staker1,
-      value: '100000000000000000'
-    }), 'Staking: amount is too low') // 0.1
+      value: '1000000000'
+    }), 'Staking: amount is too low') // 0.000000001
     await expectError(parlia.delegate(validator1, {
       from: staker1,
-      value: '00000000000000000'
+      value: '0'
     }), 'Staking: amount is too low') // 0
     await expectError(parlia.delegate(validator1, {
       from: staker1,
-      value: '1010000000000000000'
-    }), 'Staking: amount have a remainder') // 1.01
+      value: '1000000001000000000'
+    }), 'Staking: amount have a remainder') // 1.000000001
   });
   it("put validator in jail after N misses", async () => {
     const {parlia} = await newMockContract(owner, {

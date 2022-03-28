@@ -23,8 +23,8 @@ const DEFAULT_MOCK_PARAMS = {
   felonyThreshold: '150',
   validatorJailEpochLength: '7',
   undelegatePeriod: '0',
-  minValidatorStakeAmount: '1',
-  minStakingAmount: '1',
+  minValidatorStakeAmount: '1000000000000000000',
+  minStakingAmount: '1000000000000000000',
   genesisValidators: [],
   genesisDeployers: [],
   runtimeUpgradeEvmHook: '0x0000000000000000000000000000000000000000',
@@ -73,12 +73,15 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     runtimeUpgradeEvmHook,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // factory contracts
-  const staking = await Staking.new(createConstructorArgs(['address[]', 'uint256[]', 'uint16'], [genesisValidators, genesisValidators.map(() => '0'), '0']));
+  const staking = await Staking.new(createConstructorArgs(
+    ['address[]', 'uint256[]', 'uint16'],
+    [genesisValidators, genesisValidators.map(() => '0'), '0'])
+  );
   const slashingIndicator = await SlashingIndicator.new(createConstructorArgs([], []));
   const systemReward = await SystemReward.new(createConstructorArgs(['address'], [systemTreasury]));
   const governance = await Governance.new(createConstructorArgs(['uint256'], ['1']));
   const chainConfig = await ChainConfig.new(createConstructorArgs(
-    ["uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint64", "uint64"],
+    ["uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"],
     [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount])
   );
   const stakingPool = await StakingPool.new(createConstructorArgs([], []));

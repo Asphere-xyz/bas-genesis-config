@@ -21,7 +21,8 @@ interface IStaking is IValidatorSet {
         uint64 changedAt,
         uint64 jailedBefore,
         uint64 claimedAt,
-        uint16 commissionRate
+        uint16 commissionRate,
+        uint96 totalRewards
     );
 
     function getValidatorStatusAtEpoch(address validator, uint64 epoch) external view returns (
@@ -32,7 +33,8 @@ interface IStaking is IValidatorSet {
         uint64 changedAt,
         uint64 jailedBefore,
         uint64 claimedAt,
-        uint16 commissionRate
+        uint16 commissionRate,
+        uint96 totalRewards
     );
 
     function getValidatorByOwner(address owner) external view returns (address);

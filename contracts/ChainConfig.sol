@@ -11,8 +11,8 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
     event FelonyThresholdChanged(uint32 prevValue, uint32 newValue);
     event ValidatorJailEpochLengthChanged(uint32 prevValue, uint32 newValue);
     event UndelegatePeriodChanged(uint32 prevValue, uint32 newValue);
-    event MinValidatorStakeAmountChanged(uint64 prevValue, uint64 newValue);
-    event MinStakingAmountChanged(uint64 prevValue, uint64 newValue);
+    event MinValidatorStakeAmountChanged(uint256 prevValue, uint256 newValue);
+    event MinStakingAmountChanged(uint256 prevValue, uint256 newValue);
 
     struct ConsensusParams {
         uint32 activeValidatorsLength;
@@ -21,8 +21,8 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 felonyThreshold;
         uint32 validatorJailEpochLength;
         uint32 undelegatePeriod;
-        uint64 minValidatorStakeAmount;
-        uint64 minStakingAmount;
+        uint256 minValidatorStakeAmount;
+        uint256 minStakingAmount;
     }
 
     ConsensusParams private _consensusParams;
@@ -37,8 +37,8 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 felonyThreshold,
         uint32 validatorJailEpochLength,
         uint32 undelegatePeriod,
-        uint64 minValidatorStakeAmount,
-        uint64 minStakingAmount
+        uint256 minValidatorStakeAmount,
+        uint256 minStakingAmount
     ) external whenNotInitialized {
         _consensusParams.activeValidatorsLength = activeValidatorsLength;
         emit ActiveValidatorsLengthChanged(0, activeValidatorsLength);
@@ -118,22 +118,22 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         emit UndelegatePeriodChanged(prevValue, newValue);
     }
 
-    function getMinValidatorStakeAmount() external view returns (uint64) {
+    function getMinValidatorStakeAmount() external view returns (uint256) {
         return _consensusParams.minValidatorStakeAmount;
     }
 
-    function setMinValidatorStakeAmount(uint64 newValue) external {
-        uint64 prevValue = _consensusParams.minValidatorStakeAmount;
+    function setMinValidatorStakeAmount(uint256 newValue) external {
+        uint256 prevValue = _consensusParams.minValidatorStakeAmount;
         _consensusParams.minValidatorStakeAmount = newValue;
         emit MinValidatorStakeAmountChanged(prevValue, newValue);
     }
 
-    function getMinStakingAmount() external view returns (uint64) {
+    function getMinStakingAmount() external view returns (uint256) {
         return _consensusParams.minStakingAmount;
     }
 
-    function setMinStakingAmount(uint64 newValue) external {
-        uint64 prevValue = _consensusParams.minStakingAmount;
+    function setMinStakingAmount(uint256 newValue) external {
+        uint256 prevValue = _consensusParams.minStakingAmount;
         _consensusParams.minStakingAmount = newValue;
         emit MinStakingAmountChanged(prevValue, newValue);
     }

@@ -42,7 +42,7 @@ contract("StakingPool", async (accounts) => {
     await waitForNextEpoch(parlia);
     console.log(`Validator Pool: ${JSON.stringify(await stakingPool.getValidatorPool(validator1), null, 2)}`)
     console.log(`Ratio: ${(await stakingPool.getRatio(validator1)).toString()}`)
-    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '50999999999999999950');
+    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '51009999999999999964');
     let res = await stakingPool.unstake(validator1, '50000000000000000000', {from: staker1});
     assert.equal(res.logs[0].args.validator, validator1)
     assert.equal(res.logs[0].args.staker, staker1)
@@ -54,7 +54,7 @@ contract("StakingPool", async (accounts) => {
     assert.equal(res.logs[0].args.amount.toString(), '50000000000000000000')
     console.log(`Validator Pool: ${JSON.stringify(await stakingPool.getValidatorPool(validator1), null, 2)}`)
     console.log(`Ratio: ${(await stakingPool.getRatio(validator1)).toString()}`)
-    // rest can't be claimed due to rounding problem
-    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '1000000000000000000');
+    // rest can't be claimed due to rounding problem (now can, because we have increased the precision)
+    assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '1009999999999999999');
   })
 });

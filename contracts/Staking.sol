@@ -8,7 +8,7 @@ contract Staking is IStaking, InjectorContextHolder {
     /**
      * This constant indicates precision of storing compact balances in the storage or floating point. Since default
      * balance precision is 256 bits it might gain some overhead on the storage because we don't need to store such huge
-     * amount range. That is why we compact balances in uint64 values instead of uint256. By managing this value
+     * amount range. That is why we compact balances in uint112 values instead of uint256. By managing this value
      * you can set the precision of your balances, aka min and max possible staking amount. This value depends
      * mostly on your asset price in USD, for example ETH costs 4000$ then if we use 1 ether precision it takes 4000$
      * as min amount that might be problematic for users to do the stake. We can set 1 gwei precision and in this case
@@ -21,9 +21,16 @@ contract Staking is IStaking, InjectorContextHolder {
      * the same precision as specified here. It means that if you set precision 1 ether, then min staking amount of 10
      * tokens should have 10 raw value. For 1 gwei precision 10 tokens min amount should be stored as 10000000000.
      *
+     * For the 112 bits we have ~32 decimals lg(2**112)=33.71 (lets round to 32 for simplicity). We split this amount
+     * into integer (24) and for fractional (8) parts. It means that we can have only 8 decimals after zero.
+     *
+     * Based in current params we have next min/max values:
+     * - min staking amount: 0.00000001 or 1e-8
+     * - max staking amount: 1000000000000000000000000 or 1e+24
+     *
      * WARNING: precision must be a 1eN format (A=1, N>0)
      */
-    uint256 internal constant BALANCE_COMPACT_PRECISION = 1 ether;
+    uint256 internal constant BALANCE_COMPACT_PRECISION = 1e10;
     /**
      * Here is min/max commission rates. Lets don't allow to set more than 30% of validator commission, because it's
      * too big commission for validator. Commission rate is a percents divided by 100 stored with 0 decimals as percents*100 (=pc/1e2*1e4)
@@ -64,7 +71,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     struct ValidatorSnapshot {
         uint96 totalRewards;
-        uint64 totalDelegated;
+        uint112 totalDelegated;
         uint32 slashesCount;
         uint16 commissionRate;
     }
@@ -79,12 +86,12 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     struct DelegationOpDelegate {
-        uint64 amount;
+        uint112 amount;
         uint64 epoch;
     }
 
     struct DelegationOpUndelegate {
-        uint64 amount;
+        uint112 amount;
         uint64 epoch;
     }
 
@@ -106,14 +113,13 @@ contract Staking is IStaking, InjectorContextHolder {
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
-    function ctor(address[] memory validators, uint256[] calldata initialStakes, uint16 commissionRate) external whenNotInitialized {
+    function ctor(address[] calldata validators, uint256[] calldata initialStakes, uint16 commissionRate) external whenNotInitialized {
         require(initialStakes.length == validators.length);
         for (uint256 i = 0; i < validators.length; i++) {
-            require(initialStakes[i] % BALANCE_COMPACT_PRECISION == 0);
-            _addValidator(validators[i], validators[i], ValidatorStatus.Active, commissionRate, uint64(initialStakes[i] / BALANCE_COMPACT_PRECISION), 0);
+            _addValidator(validators[i], validators[i], ValidatorStatus.Active, commissionRate, initialStakes[i], 0);
         }
     }
 
@@ -137,7 +143,8 @@ contract Staking is IStaking, InjectorContextHolder {
         uint64 changedAt,
         uint64 jailedBefore,
         uint64 claimedAt,
-        uint16 commissionRate
+        uint16 commissionRate,
+        uint96 totalRewards
     ) {
         Validator memory validator = _validatorsMap[validatorAddress];
         ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
@@ -149,7 +156,8 @@ contract Staking is IStaking, InjectorContextHolder {
         changedAt = validator.changedAt,
         jailedBefore = validator.jailedBefore,
         claimedAt = validator.claimedAt,
-        commissionRate = snapshot.commissionRate
+        commissionRate = snapshot.commissionRate,
+        totalRewards = snapshot.totalRewards
         );
     }
 
@@ -161,7 +169,8 @@ contract Staking is IStaking, InjectorContextHolder {
         uint64 changedAt,
         uint64 jailedBefore,
         uint64 claimedAt,
-        uint16 commissionRate
+        uint16 commissionRate,
+        uint96 totalRewards
     ) {
         Validator memory validator = _validatorsMap[validatorAddress];
         ValidatorSnapshot memory snapshot = _touchValidatorSnapshotImmutable(validator, epoch);
@@ -173,7 +182,8 @@ contract Staking is IStaking, InjectorContextHolder {
         changedAt = validator.changedAt,
         jailedBefore = validator.jailedBefore,
         claimedAt = validator.claimedAt,
-        commissionRate = snapshot.commissionRate
+        commissionRate = snapshot.commissionRate,
+        totalRewards = snapshot.totalRewards
         );
     }
 
@@ -258,7 +268,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // check is minimum delegate amount
-        require(amount / BALANCE_COMPACT_PRECISION >= _chainConfigContract.getMinStakingAmount(), "Staking: amount is too low");
+        require(amount >= _chainConfigContract.getMinStakingAmount() || amount == 0, "Staking: amount is too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure amount is greater than min staking amount
         // make sure validator exists at least
@@ -270,7 +280,7 @@ contract Staking is IStaking, InjectorContextHolder {
         // + increase total delegated amount in the next epoch for this validator
         // + re-save validator because last affected epoch might change
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, atEpoch);
-        validatorSnapshot.totalDelegated += uint64(amount / BALANCE_COMPACT_PRECISION);
+        validatorSnapshot.totalDelegated += uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[toValidator] = validator;
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
@@ -281,13 +291,13 @@ contract Staking is IStaking, InjectorContextHolder {
             // if we already have pending snapshot for the next epoch then just increase new amount,
             // otherwise create next pending snapshot. (tbh it can't be greater, but what we can do here instead?)
             if (recentDelegateOp.epoch >= atEpoch) {
-                recentDelegateOp.amount += uint64(amount / BALANCE_COMPACT_PRECISION);
+                recentDelegateOp.amount += uint112(amount / BALANCE_COMPACT_PRECISION);
             } else {
-                delegation.delegateQueue.push(DelegationOpDelegate({epoch : atEpoch, amount : recentDelegateOp.amount + uint64(amount / BALANCE_COMPACT_PRECISION)}));
+                delegation.delegateQueue.push(DelegationOpDelegate({epoch : atEpoch, amount : recentDelegateOp.amount + uint112(amount / BALANCE_COMPACT_PRECISION)}));
             }
         } else {
             // there is no any delegations at al, lets create the first one
-            delegation.delegateQueue.push(DelegationOpDelegate({epoch : atEpoch, amount : uint64(amount / BALANCE_COMPACT_PRECISION)}));
+            delegation.delegateQueue.push(DelegationOpDelegate({epoch : atEpoch, amount : uint112(amount / BALANCE_COMPACT_PRECISION)}));
         }
         // emit event with the next epoch
         emit Delegated(toValidator, fromDelegator, amount, atEpoch);
@@ -295,7 +305,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
         // check minimum delegate amount
-        require(amount / BALANCE_COMPACT_PRECISION >= _chainConfigContract.getMinStakingAmount(), "Staking: amount is too low");
+        require(amount >= _chainConfigContract.getMinStakingAmount() || amount == 0, "Staking: amount is too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
@@ -306,8 +316,8 @@ contract Staking is IStaking, InjectorContextHolder {
         // + increase total delegated amount in the next epoch for this validator
         // + re-save validator because last affected epoch might change
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, beforeEpoch);
-        require(validatorSnapshot.totalDelegated >= uint64(amount / BALANCE_COMPACT_PRECISION), "Staking: insufficient balance");
-        validatorSnapshot.totalDelegated -= uint64(amount / BALANCE_COMPACT_PRECISION);
+        require(validatorSnapshot.totalDelegated >= uint112(amount / BALANCE_COMPACT_PRECISION), "Staking: insufficient balance");
+        validatorSnapshot.totalDelegated -= uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[fromValidator] = validator;
         // if last pending delegate has the same next epoch then its safe to just increase total
         // staked amount because it can't affect current validator set, but otherwise we must create
@@ -316,7 +326,7 @@ contract Staking is IStaking, InjectorContextHolder {
         require(delegation.delegateQueue.length > 0, "Staking: delegation queue is empty");
         DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
         require(recentDelegateOp.amount >= uint64(amount / BALANCE_COMPACT_PRECISION), "Staking: insufficient balance");
-        uint64 nextDelegatedAmount = recentDelegateOp.amount - uint64(amount / BALANCE_COMPACT_PRECISION);
+        uint112 nextDelegatedAmount = recentDelegateOp.amount - uint112(amount / BALANCE_COMPACT_PRECISION);
         if (recentDelegateOp.epoch >= beforeEpoch) {
             // decrease total delegated amount for the next epoch
             recentDelegateOp.amount = nextDelegatedAmount;
@@ -325,7 +335,7 @@ contract Staking is IStaking, InjectorContextHolder {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : beforeEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint64(amount / BALANCE_COMPACT_PRECISION), epoch : beforeEpoch + _chainConfigContract.getUndelegatePeriod()}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint112(amount / BALANCE_COMPACT_PRECISION), epoch : beforeEpoch + _chainConfigContract.getUndelegatePeriod()}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, beforeEpoch);
     }
@@ -452,7 +462,7 @@ contract Staking is IStaking, InjectorContextHolder {
             return (delegatorFee = 0, ownerFee = validatorSnapshot.totalRewards, systemFee = 0);
         }
         // ownerFee_(18+4-4=18) = totalRewards_18 * commissionRate_4 / 1e4
-        ownerFee = validatorSnapshot.totalRewards * validatorSnapshot.commissionRate / 1e4;
+        ownerFee = uint256(validatorSnapshot.totalRewards) * validatorSnapshot.commissionRate / 1e4;
         // delegatorRewards = totalRewards - ownerFee
         delegatorFee = validatorSnapshot.totalRewards - ownerFee;
         // default system fee is zero for epoch
@@ -460,21 +470,19 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function registerValidator(address validatorAddress, uint16 commissionRate) payable external override {
-        address validatorOwner = msg.sender;
         uint256 initialStake = msg.value;
-        // initial stake requirements
-        require(initialStake / BALANCE_COMPACT_PRECISION >= _chainConfigContract.getMinValidatorStakeAmount(), "Staking: initial stake is too low");
+        // // initial stake amount should be greater than minimum validator staking amount
+        require(initialStake >= _chainConfigContract.getMinValidatorStakeAmount(), "Staking: initial stake is too low");
         require(initialStake % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
-        // initial stake amount should be greater than minimum validator staking amount
-        // add new pending validator
-        _addValidator(validatorAddress, validatorOwner, ValidatorStatus.Pending, commissionRate, uint64(initialStake / BALANCE_COMPACT_PRECISION), _nextEpoch());
+        // add new validator as pending
+        _addValidator(validatorAddress, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, _nextEpoch());
     }
 
     function addValidator(address account) external onlyFromGovernance virtual override {
         _addValidator(account, account, ValidatorStatus.Active, 0, 0, _nextEpoch());
     }
 
-    function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint64 initialStake, uint64 sinceEpoch) internal {
+    function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint256 initialStake, uint64 sinceEpoch) internal {
         // validator commission rate
         require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "Staking: bad commission rate");
         // init validator default params
@@ -493,11 +501,11 @@ contract Staking is IStaking, InjectorContextHolder {
             _activeValidatorsList.push(validatorAddress);
         }
         // push initial validator snapshot at zero epoch with default params
-        _validatorSnapshots[validatorAddress][sinceEpoch] = ValidatorSnapshot(0, initialStake, 0, commissionRate);
+        _validatorSnapshots[validatorAddress][sinceEpoch] = ValidatorSnapshot(0, uint112(initialStake / BALANCE_COMPACT_PRECISION), 0, commissionRate);
         // delegate initial stake to validator owner
         ValidatorDelegation storage delegation = _validatorDelegations[validatorAddress][validatorOwner];
         require(delegation.delegateQueue.length == 0, "Staking: delegation queue is not empty");
-        delegation.delegateQueue.push(DelegationOpDelegate(initialStake, sinceEpoch));
+        delegation.delegateQueue.push(DelegationOpDelegate(uint112(initialStake / BALANCE_COMPACT_PRECISION), sinceEpoch));
         // emit event
         emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }

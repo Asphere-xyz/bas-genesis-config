@@ -10,6 +10,11 @@ import "./Staking.sol";
 
 contract StakingPool is InjectorContextHolder, IStakingPool {
 
+    /**
+     * This value must the same as in Staking smart contract
+     */
+    uint256 internal constant BALANCE_COMPACT_PRECISION = 1e10;
+
     event Stake(address indexed validator, address indexed staker, uint256 amount);
     event Unstake(address indexed validator, address indexed staker, uint256 amount);
     event Claim(address indexed validator, address indexed staker, uint256 amount);
@@ -88,8 +93,6 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         return validatorPool;
     }
 
-    uint256 internal constant BALANCE_COMPACT_PRECISION = 1 ether;
-
     function _calcUnclaimedDelegatorFee(ValidatorPool memory validatorPool) internal view returns (uint256 stakedAmount, uint256 dustRewards) {
         uint256 unclaimedRewards = _stakingContract.getDelegatorFee(validatorPool.validatorAddress, address(this));
         // adjust values based on total dust and pending unstakes
@@ -97,7 +100,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         unclaimedRewards -= validatorPool.pendingUnstake;
         // split balance into stake and dust
         stakedAmount = (unclaimedRewards / BALANCE_COMPACT_PRECISION) * BALANCE_COMPACT_PRECISION;
-        if (stakedAmount / BALANCE_COMPACT_PRECISION < _chainConfigContract.getMinStakingAmount()) {
+        if (stakedAmount < _chainConfigContract.getMinStakingAmount()) {
             return (0, unclaimedRewards);
         }
         return (stakedAmount, unclaimedRewards - stakedAmount);

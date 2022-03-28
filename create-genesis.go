@@ -184,8 +184,8 @@ type consensusParams struct {
 	FelonyThreshold          uint32
 	ValidatorJailEpochLength uint32
 	UndelegatePeriod         uint32
-	MinValidatorStakeAmount  uint64
-	MinStakingAmount         uint64
+	MinValidatorStakeAmount  *big.Int
+	MinStakingAmount         *big.Int
 }
 
 type genesisConfig struct {
@@ -240,7 +240,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		initialStakes,
 		uint16(config.CommissionRate),
 	})
-	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint64", "uint64"}, []interface{}{
+	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
 		config.ConsensusParams.MisdemeanorThreshold,
@@ -339,8 +339,8 @@ var devnetConfig = genesisConfig{
 		FelonyThreshold:          100,
 		ValidatorJailEpochLength: 1,
 		UndelegatePeriod:         0,
-		MinValidatorStakeAmount:  1,
-		MinStakingAmount:         1,
+		MinValidatorStakeAmount:  hexutil.MustDecodeBig("0xde0b6b3a7640000"), // 1 ether
+		MinStakingAmount:         hexutil.MustDecodeBig("0xde0b6b3a7640000"), // 1 ether
 	},
 	InitialStakes: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x3635c9adc5dea00000", // 1000 eth
@@ -375,8 +375,9 @@ var testnetConfig = genesisConfig{
 		FelonyThreshold:          150,   // after missing this amount of blocks per day validator goes in jail for N epochs
 		ValidatorJailEpochLength: 7,     // how many epochs validator should stay in jail (7 epochs = ~7 days)
 		UndelegatePeriod:         6,     // allow claiming funds only after 6 epochs (~7 days)
-		MinValidatorStakeAmount:  1,     // how many tokens validator must stake to create a validator (in ether)
-		MinStakingAmount:         1,     // minimum staking amount for delegators (in ether)
+
+		MinValidatorStakeAmount: hexutil.MustDecodeBig("0xde0b6b3a7640000"), // how many tokens validator must stake to create a validator (in ether)
+		MinStakingAmount:        hexutil.MustDecodeBig("0xde0b6b3a7640000"), // minimum staking amount for delegators (in ether)
 	},
 	InitialStakes: map[common.Address]string{
 		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"): "0x3635c9adc5dea00000", // 1000 eth
