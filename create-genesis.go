@@ -224,6 +224,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
 	var initialStakes []*big.Int
+	initialStakeTotal := big.NewInt(0)
 	for _, v := range config.Validators {
 		rawInitialStake, ok := config.InitialStakes[v]
 		if !ok {
@@ -234,6 +235,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 			return err
 		}
 		initialStakes = append(initialStakes, initialStake)
+		initialStakeTotal.Add(initialStakeTotal, initialStake)
 	}
 	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint256[]", "uint16"}, []interface{}{
 		config.Validators,
@@ -266,7 +268,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	})
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
-		Balance: big.NewInt(0),
+		Balance: initialStakeTotal,
 	}
 	// apply faucet
 	for key, value := range config.Faucet {
