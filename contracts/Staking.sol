@@ -268,7 +268,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // check is minimum delegate amount
-        require(amount >= _chainConfigContract.getMinStakingAmount() || amount == 0, "Staking: amount is too low");
+        require(amount >= _chainConfigContract.getMinStakingAmount() && amount != 0, "Staking: amount is too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure amount is greater than min staking amount
         // make sure validator exists at least
@@ -305,7 +305,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
         // check minimum delegate amount
-        require(amount >= _chainConfigContract.getMinStakingAmount() || amount == 0, "Staking: amount is too low");
+        require(amount >= _chainConfigContract.getMinStakingAmount() && amount != 0, "Staking: amount is too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];

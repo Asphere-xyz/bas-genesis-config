@@ -324,7 +324,7 @@ contract("Staking", async (accounts) => {
     await expectError(parlia.delegate(validator1, {
       from: staker1,
       value: '1000000000'
-    }), 'Staking: amount is too low') // 0.000000001
+    }), 'Staking: amount have a remainder') // 0.000000001
     await expectError(parlia.delegate(validator1, {
       from: staker1,
       value: '0'

@@ -371,12 +371,12 @@ var testnetConfig = genesisConfig{
 	},
 	SystemTreasury: common.HexToAddress(""),
 	ConsensusParams: consensusParams{
-		ActiveValidatorsLength:   25,    // suggested values are (3k+1, where k is honest validators, even better): 7, 13, 19, 25, 31...
-		EpochBlockInterval:       28800, // better to use 1 day epoch (86400/3=28800, where 3s is block time)
-		MisdemeanorThreshold:     50,    // after missing this amount of blocks per day validator losses all daily rewards (penalty)
-		FelonyThreshold:          150,   // after missing this amount of blocks per day validator goes in jail for N epochs
-		ValidatorJailEpochLength: 7,     // how many epochs validator should stay in jail (7 epochs = ~7 days)
-		UndelegatePeriod:         6,     // allow claiming funds only after 6 epochs (~7 days)
+		ActiveValidatorsLength:   25,   // suggested values are (3k+1, where k is honest validators, even better): 7, 13, 19, 25, 31...
+		EpochBlockInterval:       1200, // better to use 1 day epoch (86400/3=28800, where 3s is block time)
+		MisdemeanorThreshold:     50,   // after missing this amount of blocks per day validator losses all daily rewards (penalty)
+		FelonyThreshold:          150,  // after missing this amount of blocks per day validator goes in jail for N epochs
+		ValidatorJailEpochLength: 7,    // how many epochs validator should stay in jail (7 epochs = ~7 days)
+		UndelegatePeriod:         6,    // allow claiming funds only after 6 epochs (~7 days)
 
 		MinValidatorStakeAmount: hexutil.MustDecodeBig("0xde0b6b3a7640000"), // how many tokens validator must stake to create a validator (in ether)
 		MinStakingAmount:        hexutil.MustDecodeBig("0xde0b6b3a7640000"), // minimum staking amount for delegators (in ether)
