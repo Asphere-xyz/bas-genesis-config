@@ -268,8 +268,12 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	})
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
-		Balance: initialStakeTotal,
+		Balance: big.NewInt(0),
 	}
+	// set staking allocation
+	stakingAlloc := genesis.Alloc[stakingAddress]
+	stakingAlloc.Balance = initialStakeTotal
+	genesis.Alloc[stakingAddress] = stakingAlloc
 	// apply faucet
 	for key, value := range config.Faucet {
 		balance, ok := new(big.Int).SetString(value[2:], 16)
@@ -398,13 +402,13 @@ var testnetConfig = genesisConfig{
 }
 
 func main() {
-	println("building devnet")
-	if err := createGenesisConfig(devnetConfig, "devnet.json"); err != nil {
+	println("building local net")
+	if err := createGenesisConfig(devnetConfig, "localnet.json"); err != nil {
 		panic(err)
 	}
 	println()
-	println("building testnet")
-	if err := createGenesisConfig(testnetConfig, "testnet.json"); err != nil {
+	println("building dev net")
+	if err := createGenesisConfig(testnetConfig, "devnet.json"); err != nil {
 		panic(err)
 	}
 	println()
