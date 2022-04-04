@@ -201,6 +201,7 @@ contract Staking is IStaking, InjectorContextHolder {
         // update validator status
         validator.status = ValidatorStatus.Active;
         _validatorsMap[validatorAddress] = validator;
+        _activeValidatorsList.push(validatorAddress);
     }
 
     function _totalDelegatedToValidator(Validator memory validator) internal view returns (uint256) {
@@ -751,6 +752,7 @@ contract Staking is IStaking, InjectorContextHolder {
         if (slashesCount == _chainConfigContract.getFelonyThreshold()) {
             validator.jailedBefore = _currentEpoch() + _chainConfigContract.getValidatorJailEpochLength();
             validator.status = ValidatorStatus.Jail;
+            _removeValidatorFromActiveList(validatorAddress);
             _validatorsMap[validatorAddress] = validator;
             emit ValidatorJailed(validatorAddress, epoch);
         }

@@ -456,4 +456,30 @@ contract("Staking", async (accounts) => {
       console.log(` + ${blocks} blocks, amount=${new BigNumber(result.logs[0].args.amount).dividedBy(1e18).toString(10)}, gas=${result.receipt.gasUsed}`);
     }
   })
+  it("jailed validator is removed from active validator set after new epoch", async () => {
+    const {parlia} = await newMockContract(owner, {
+      genesisValidators: [ validator1, validator2 ],
+      epochBlockInterval: '50',
+      validatorJailEpochLength: '1',
+      misdemeanorThreshold: '5',
+      felonyThreshold: '10',
+    });
+    assert.deepEqual(Array.from(await parlia.getValidators()).sort(), [
+      validator1,
+      validator2,
+    ])
+    for (let i = 0; i < 10; i++) {
+      await parlia.slash(validator1);
+    }
+    assert.deepEqual(Array.from(await parlia.getValidators()).sort(), [
+      validator2,
+    ])
+    await waitForNextEpoch(parlia)
+    await waitForNextEpoch(parlia)
+    await parlia.releaseValidatorFromJail(validator1, {from: validator1});
+    assert.deepEqual(Array.from(await parlia.getValidators()).sort(), [
+      validator1,
+      validator2,
+    ])
+  });
 });
