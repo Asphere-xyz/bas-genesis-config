@@ -327,7 +327,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 	}
 }
 
-var devnetConfig = genesisConfig{
+var localNetConfig = genesisConfig{
 	Genesis: defaultGenesisConfig(1337),
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{
@@ -361,7 +361,7 @@ var devnetConfig = genesisConfig{
 	},
 }
 
-var testnetConfig = genesisConfig{
+var devNetConfig = genesisConfig{
 	Genesis: defaultGenesisConfig(14000),
 	// who is able to deploy smart contract from genesis block (it won't generate event log)
 	Deployers: []common.Address{},
@@ -403,12 +403,12 @@ var testnetConfig = genesisConfig{
 
 func main() {
 	println("building local net")
-	if err := createGenesisConfig(devnetConfig, "localnet.json"); err != nil {
+	if err := createGenesisConfig(localNetConfig, "localnet.json"); err != nil {
 		panic(err)
 	}
 	println()
 	println("building dev net")
-	if err := createGenesisConfig(testnetConfig, "devnet.json"); err != nil {
+	if err := createGenesisConfig(devNetConfig, "devnet.json"); err != nil {
 		panic(err)
 	}
 	println()
