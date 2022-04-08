@@ -4,7 +4,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	systemcontract2 "github.com/ethereum/go-ethereum/common/systemcontract"
+	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/common/systemcontract"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"io/fs"
 	"io/ioutil"
@@ -45,7 +46,7 @@ func (d *dummyChainContext) Engine() consensus.Engine {
 	return nil
 }
 
-func (d *dummyChainContext) GetHeader(h common.Hash, n uint64) *types.Header {
+func (d *dummyChainContext) GetHeader(common.Hash, uint64) *types.Header {
 	return nil
 }
 
@@ -179,18 +180,18 @@ func newArguments(typeNames ...string) abi.Arguments {
 }
 
 type consensusParams struct {
-	ActiveValidatorsLength   uint32
-	EpochBlockInterval       uint32
-	MisdemeanorThreshold     uint32
-	FelonyThreshold          uint32
-	ValidatorJailEpochLength uint32
-	UndelegatePeriod         uint32
-	MinValidatorStakeAmount  *big.Int
-	MinStakingAmount         *big.Int
+	ActiveValidatorsLength   uint32                `json:"activeValidatorsLength"`
+	EpochBlockInterval       uint32                `json:"epochBlockInterval"`
+	MisdemeanorThreshold     uint32                `json:"misdemeanorThreshold"`
+	FelonyThreshold          uint32                `json:"felonyThreshold"`
+	ValidatorJailEpochLength uint32                `json:"validatorJailEpochLength"`
+	UndelegatePeriod         uint32                `json:"undelegatePeriod"`
+	MinValidatorStakeAmount  *math.HexOrDecimal256 `json:"minValidatorStakeAmount"`
+	MinStakingAmount         *math.HexOrDecimal256 `json:"minStakingAmount"`
 }
 
 type genesisConfig struct {
-	Genesis         *core.Genesis             `json:"genesis"`
+	ChainId         int64                     `json:"chainId"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
 	SystemTreasury  common.Address            `json:"systemTreasury"`
@@ -201,7 +202,7 @@ type genesisConfig struct {
 	InitialStakes   map[common.Address]string `json:"initialStakes"`
 }
 
-func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}) {
+func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool) {
 	ctor, err := newArguments(typeNames...).Pack(params...)
 	if err != nil {
 		panic(err)
@@ -212,14 +213,16 @@ func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, ra
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf(" + calling constructor: address=%s sig=%s ctor=%s\n", contract.Hex(), hexutil.Encode(sig), hexutil.Encode(ctor))
+	if !silent {
+		fmt.Printf(" + calling constructor: address=%s sig=%s ctor=%s\n", contract.Hex(), hexutil.Encode(sig), hexutil.Encode(ctor))
+	}
 	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor); err != nil {
 		panic(err)
 	}
 }
 
 func createGenesisConfig(config genesisConfig, targetFile string) error {
-	genesis := config.Genesis
+	genesis := defaultGenesisConfig(config.ChainId)
 	// extra data
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
@@ -238,11 +241,12 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		initialStakes = append(initialStakes, initialStake)
 		initialStakeTotal.Add(initialStakeTotal, initialStake)
 	}
+	silent := targetFile == "stdout"
 	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint256[]", "uint16"}, []interface{}{
 		config.Validators,
 		initialStakes,
 		uint16(config.CommissionRate),
-	})
+	}, silent)
 	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
@@ -250,23 +254,23 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.FelonyThreshold,
 		config.ConsensusParams.ValidatorJailEpochLength,
 		config.ConsensusParams.UndelegatePeriod,
-		config.ConsensusParams.MinValidatorStakeAmount,
-		config.ConsensusParams.MinStakingAmount,
-	})
-	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{})
-	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{})
+		(*big.Int)(config.ConsensusParams.MinValidatorStakeAmount),
+		(*big.Int)(config.ConsensusParams.MinStakingAmount),
+	}, silent)
+	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, silent)
+	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, silent)
 	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address"}, []interface{}{
 		config.SystemTreasury,
-	})
+	}, silent)
 	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
 		big.NewInt(config.VotingPeriod),
-	})
+	}, silent)
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
-		systemcontract2.EvmHookRuntimeUpgradeAddress,
-	})
+		systemcontract.EvmHookRuntimeUpgradeAddress,
+	}, silent)
 	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
-	})
+	}, silent)
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
 		Balance: big.NewInt(0),
@@ -287,6 +291,13 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	}
 	// save to file
 	newJson, _ := json.MarshalIndent(genesis, "", "  ")
+	if targetFile == "stdout" {
+		_, err := os.Stdout.Write(newJson)
+		return err
+	} else if targetFile == "stderr" {
+		_, err := os.Stderr.Write(newJson)
+		return err
+	}
 	return ioutil.WriteFile(targetFile, newJson, fs.ModePerm)
 }
 
@@ -329,7 +340,7 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 }
 
 var localNetConfig = genesisConfig{
-	Genesis: defaultGenesisConfig(1337),
+	ChainId: 1337,
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
@@ -346,8 +357,8 @@ var localNetConfig = genesisConfig{
 		FelonyThreshold:          100,
 		ValidatorJailEpochLength: 1,
 		UndelegatePeriod:         0,
-		MinValidatorStakeAmount:  hexutil.MustDecodeBig("0xde0b6b3a7640000"), // 1 ether
-		MinStakingAmount:         hexutil.MustDecodeBig("0xde0b6b3a7640000"), // 1 ether
+		MinValidatorStakeAmount:  (*math.HexOrDecimal256)(hexutil.MustDecodeBig("0xde0b6b3a7640000")), // 1 ether
+		MinStakingAmount:         (*math.HexOrDecimal256)(hexutil.MustDecodeBig("0xde0b6b3a7640000")), // 1 ether
 	},
 	InitialStakes: map[common.Address]string{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): "0x3635c9adc5dea00000", // 1000 eth
@@ -363,7 +374,7 @@ var localNetConfig = genesisConfig{
 }
 
 var devNetConfig = genesisConfig{
-	Genesis: defaultGenesisConfig(14000),
+	ChainId: 14000,
 	// who is able to deploy smart contract from genesis block (it won't generate event log)
 	Deployers: []common.Address{},
 	// list of default validators (it won't generate event log)
@@ -383,8 +394,8 @@ var devNetConfig = genesisConfig{
 		ValidatorJailEpochLength: 7,    // how many epochs validator should stay in jail (7 epochs = ~7 days)
 		UndelegatePeriod:         6,    // allow claiming funds only after 6 epochs (~7 days)
 
-		MinValidatorStakeAmount: hexutil.MustDecodeBig("0xde0b6b3a7640000"), // how many tokens validator must stake to create a validator (in ether)
-		MinStakingAmount:        hexutil.MustDecodeBig("0xde0b6b3a7640000"), // minimum staking amount for delegators (in ether)
+		MinValidatorStakeAmount: (*math.HexOrDecimal256)(hexutil.MustDecodeBig("0xde0b6b3a7640000")), // how many tokens validator must stake to create a validator (in ether)
+		MinStakingAmount:        (*math.HexOrDecimal256)(hexutil.MustDecodeBig("0xde0b6b3a7640000")), // minimum staking amount for delegators (in ether)
 	},
 	InitialStakes: map[common.Address]string{
 		common.HexToAddress("0x08fae3885e299c24ff9841478eb946f41023ac69"): "0x3635c9adc5dea00000", // 1000 eth
@@ -404,7 +415,7 @@ var devNetConfig = genesisConfig{
 
 func main() {
 	args := os.Args[1:]
-	if len(args) == 2 {
+	if len(args) > 0 {
 		fileContents, err := os.ReadFile(args[0])
 		if err != nil {
 			panic(err)
@@ -414,19 +425,23 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		err = createGenesisConfig(*genesis, args[1])
+		outputFile := "stdout"
+		if len(args) > 1 {
+			outputFile = args[1]
+		}
+		err = createGenesisConfig(*genesis, outputFile)
 		if err != nil {
 			panic(err)
 		}
+		return
 	}
-	println("building local net")
+	fmt.Printf("building local net\n")
 	if err := createGenesisConfig(localNetConfig, "localnet.json"); err != nil {
 		panic(err)
 	}
-	println()
-	println("building dev net")
+	fmt.Printf("\nbuilding dev net\n")
 	if err := createGenesisConfig(devNetConfig, "devnet.json"); err != nil {
 		panic(err)
 	}
-	println()
+	fmt.Printf("\n")
 }

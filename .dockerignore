@@ -1,0 +1,6 @@
+.git
+build
+node_modules
+devnet.json
+localnet.json
+Dockerfile
