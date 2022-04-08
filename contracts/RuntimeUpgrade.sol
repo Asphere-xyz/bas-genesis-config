@@ -7,7 +7,10 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
     event SmartContractUpgrade(address contractAddress, bytes newByteCode);
 
+    // address of the EVM hook
     address internal _evmHookAddress;
+    // list of new deployed system smart contracts
+    address[] internal _deployedSystemContracts;
 
     constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
@@ -16,12 +19,67 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         _evmHookAddress = evmHookAddress;
     }
 
+    function getEvmHookAddress() external view override returns (address) {
+        return _evmHookAddress;
+    }
+
     function upgradeSystemSmartContract(
         address systemContractAddress,
         bytes calldata newByteCode,
         bytes calldata applyFunction
     ) external onlyFromGovernance virtual override {
+        // we allow to upgrade only system smart contracts
+        require(_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only system smart contract");
+        // upgrade system contract
         _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction);
+    }
+
+    function deploySystemSmartContract(
+        address systemContractAddress,
+        bytes calldata newByteCode,
+        bytes calldata applyFunction
+    ) external onlyFromGovernance virtual override {
+        // disallow to upgrade plain contracts or system contracts (only new)
+        require(!_isContract(systemContractAddress) && !_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only new address");
+        // upgrade system contract with provided bytecode
+        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction);
+        // extend list of new system contracts to let it be a system smart contract
+        _deployedSystemContracts.push(systemContractAddress);
+    }
+
+    function getSystemContracts() public view override returns (address[] memory) {
+        address[] memory result = new address[](8 + _deployedSystemContracts.length);
+        // BSC-compatible
+        result[0] = address(_stakingContract);
+        result[1] = address(_slashingIndicatorContract);
+        result[2] = address(_systemRewardContract);
+        // BAS-defined
+        result[3] = address(_stakingPoolContract);
+        result[4] = address(_governanceContract);
+        result[5] = address(_chainConfigContract);
+        result[6] = address(_runtimeUpgradeContract);
+        result[7] = address(_deployerProxyContract);
+        // copy deployed system smart contracts
+        for (uint256 i = 0; i < _deployedSystemContracts.length; i++) {
+            result[8 + i] = _deployedSystemContracts[i];
+        }
+        return result;
+    }
+
+    function _isContract(address account) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
+    }
+
+    function _isSystemSmartContract(address contractAddress) internal returns (bool) {
+        address[] memory systemContracts = getSystemContracts();
+        for (uint256 i = 0; i < systemContracts.length; i++) {
+            if (systemContracts[i] == contractAddress) return true;
+        }
+        return false;
     }
 
     function _upgradeSystemSmartContract(
@@ -29,8 +87,6 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         bytes calldata newByteCode,
         bytes calldata applyFunction
     ) internal {
-        // we allow to upgrade only system smart contracts
-        require(_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only system smart contract");
         // modify bytecode using EVM hook
         bytes memory inputData = abi.encodeWithSelector(IRuntimeUpgradeEvmHook.upgradeTo.selector, systemContractAddress, newByteCode);
         (bool result,) = address(_evmHookAddress).call(inputData);
@@ -47,9 +103,5 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         }
         // emit event
         emit SmartContractUpgrade(systemContractAddress, newByteCode);
-    }
-
-    function getEvmHookAddress() external view returns (address) {
-        return _evmHookAddress;
     }
 }

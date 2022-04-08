@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"reflect"
 	"strings"
 	"unicode"
@@ -189,15 +190,15 @@ type consensusParams struct {
 }
 
 type genesisConfig struct {
-	Genesis         *core.Genesis
-	Deployers       []common.Address
-	Validators      []common.Address
-	SystemTreasury  common.Address
-	ConsensusParams consensusParams
-	VotingPeriod    int64
-	Faucet          map[common.Address]string
-	CommissionRate  int64
-	InitialStakes   map[common.Address]string
+	Genesis         *core.Genesis             `json:"genesis"`
+	Deployers       []common.Address          `json:"deployers"`
+	Validators      []common.Address          `json:"validators"`
+	SystemTreasury  common.Address            `json:"systemTreasury"`
+	ConsensusParams consensusParams           `json:"consensusParams"`
+	VotingPeriod    int64                     `json:"votingPeriod"`
+	Faucet          map[common.Address]string `json:"faucet"`
+	CommissionRate  int64                     `json:"commissionRate"`
+	InitialStakes   map[common.Address]string `json:"initialStakes"`
 }
 
 func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}) {
@@ -402,6 +403,22 @@ var devNetConfig = genesisConfig{
 }
 
 func main() {
+	args := os.Args[1:]
+	if len(args) == 2 {
+		fileContents, err := os.ReadFile(args[0])
+		if err != nil {
+			panic(err)
+		}
+		genesis := &genesisConfig{}
+		err = json.Unmarshal(fileContents, genesis)
+		if err != nil {
+			panic(err)
+		}
+		err = createGenesisConfig(*genesis, args[1])
+		if err != nil {
+			panic(err)
+		}
+	}
 	println("building local net")
 	if err := createGenesisConfig(localNetConfig, "localnet.json"); err != nil {
 		panic(err)
