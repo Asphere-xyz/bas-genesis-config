@@ -582,6 +582,7 @@ contract Staking is IStaking, InjectorContextHolder {
     function changeValidatorOwner(address validatorAddress, address newOwner) external override {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.ownerAddress == msg.sender, "Staking: only validator owner");
+        require(_validatorOwners[newOwner] == address(0x00), "Staking: Owner already in use");
         delete _validatorOwners[validator.ownerAddress];
         validator.ownerAddress = newOwner;
         _validatorOwners[newOwner] = validatorAddress;
