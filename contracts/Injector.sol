@@ -18,10 +18,15 @@ abstract contract AlreadyInit {
     // flag indicating is smart contract initialized already
     bool internal _init;
 
-    modifier whenNotInitialized() {
+    modifier initializer() {
         require(!_init, "Injector: already initialized");
         _;
         _init = true;
+    }
+
+    modifier whenNotInitialized() {
+        require(!_init, "Injector: already initialized");
+        _;
     }
 
     modifier whenInitialized() {
@@ -46,15 +51,15 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
     IRuntimeUpgrade internal _runtimeUpgradeContract;
     IDeployerProxy internal _deployerProxyContract;
 
-    // already init (1) + injector (7) = 8
-    uint256[100 - 8] private __reserved;
+    // already init (1) + ctor(1) + injector (8) = 10
+    uint256[100 - 10] private __reserved;
 
     constructor(bytes memory constructorParams) {
         // save constructor params to use them in the init function
         _ctor = constructorParams;
     }
 
-    function init() external whenNotInitialized {
+    function init() external initializer {
         // BSC compatible addresses
         _stakingContract = IStaking(0x0000000000000000000000000000000000001000);
         _slashingIndicatorContract = ISlashingIndicator(0x0000000000000000000000000000000000001001);
@@ -78,7 +83,7 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         IChainConfig chainConfigContract,
         IRuntimeUpgrade runtimeUpgradeContract,
         IDeployerProxy deployerProxyContract
-    ) public whenNotInitialized {
+    ) public initializer {
         // BSC-compatible
         _stakingContract = stakingContract;
         _slashingIndicatorContract = slashingIndicatorContract;

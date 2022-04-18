@@ -40,7 +40,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
     // allocated shares (validator => staker => shares)
     mapping(address => mapping(address => uint256)) _stakerShares;
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
     function ctor() external whenNotInitialized {

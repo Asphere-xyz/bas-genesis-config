@@ -11,7 +11,7 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
 
     uint256 internal _instantVotingPeriod;
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) Governor("Governance") GovernorSettings(0, 1, 0) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) Governor("Governance") GovernorSettings(0, 1, 0) {
     }
 
     function ctor(uint256 newVotingPeriod) external whenNotInitialized {

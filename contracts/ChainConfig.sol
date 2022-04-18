@@ -27,7 +27,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
 
     ConsensusParams private _consensusParams;
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
     function ctor(
@@ -122,7 +122,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         return _consensusParams.minValidatorStakeAmount;
     }
 
-    function setMinValidatorStakeAmount(uint256 newValue) external {
+    function setMinValidatorStakeAmount(uint256 newValue) external override onlyFromGovernance {
         uint256 prevValue = _consensusParams.minValidatorStakeAmount;
         _consensusParams.minValidatorStakeAmount = newValue;
         emit MinValidatorStakeAmountChanged(prevValue, newValue);
@@ -132,7 +132,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         return _consensusParams.minStakingAmount;
     }
 
-    function setMinStakingAmount(uint256 newValue) external {
+    function setMinStakingAmount(uint256 newValue) external override onlyFromGovernance {
         uint256 prevValue = _consensusParams.minStakingAmount;
         _consensusParams.minStakingAmount = newValue;
         emit MinStakingAmountChanged(prevValue, newValue);

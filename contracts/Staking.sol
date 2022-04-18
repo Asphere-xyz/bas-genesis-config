@@ -213,7 +213,7 @@ contract Staking is IStaking, InjectorContextHolder {
         _delegateTo(msg.sender, validatorAddress, msg.value);
     }
 
-    function undelegate(address validatorAddress, uint256 amount) payable external override {
+    function undelegate(address validatorAddress, uint256 amount) external override {
         _undelegateFrom(msg.sender, validatorAddress, amount);
     }
 
@@ -739,7 +739,7 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _slashValidator(address validatorAddress) internal {
-        // make sure validator was active
+        // make sure validator exists
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
         uint64 epoch = _currentEpoch();
