@@ -554,6 +554,8 @@ contract Staking is IStaking, InjectorContextHolder {
         _activeValidatorsList.push(validatorAddress);
         validator.status = ValidatorStatus.Active;
         _validatorsMap[validatorAddress] = validator;
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
     function disableValidator(address validator) external onlyFromGovernance virtual override {
@@ -566,6 +568,8 @@ contract Staking is IStaking, InjectorContextHolder {
         _removeValidatorFromActiveList(validatorAddress);
         validator.status = ValidatorStatus.Pending;
         _validatorsMap[validatorAddress] = validator;
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
     function changeValidatorCommissionRate(address validatorAddress, uint16 commissionRate) external {
