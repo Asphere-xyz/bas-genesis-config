@@ -52,7 +52,7 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
     IDeployerProxy internal _deployerProxyContract;
 
     // already init (1) + ctor(1) + injector (8) = 10
-    uint256[100 - 10] private __reserved;
+    uint256[100 - 8] private __reserved;
 
     constructor(bytes memory constructorParams) {
         // save constructor params to use them in the init function
