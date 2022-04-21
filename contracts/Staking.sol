@@ -118,9 +118,12 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function ctor(address[] calldata validators, uint256[] calldata initialStakes, uint16 commissionRate) external whenNotInitialized {
         require(initialStakes.length == validators.length);
+        uint256 totalStakes = 0;
         for (uint256 i = 0; i < validators.length; i++) {
             _addValidator(validators[i], validators[i], ValidatorStatus.Active, commissionRate, initialStakes[i], 0);
+            totalStakes += initialStakes[i];
         }
+        require(address(this).balance == totalStakes, "Staking: initial stake balance mismatch");
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
@@ -535,6 +538,9 @@ contract Staking is IStaking, InjectorContextHolder {
     function _removeValidator(address account) internal {
         Validator memory validator = _validatorsMap[account];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
+        // make sure validator doesn't have active or pending delegations
+        ValidatorSnapshot memory snapshot = _touchValidatorSnapshotImmutable(validator, _nextEpoch());
+        require(snapshot.totalDelegated == 0, "Staking: validator have delegations");
         // remove validator from active list if exists
         _removeValidatorFromActiveList(account);
         // remove from validators map
