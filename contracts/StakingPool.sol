@@ -163,7 +163,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         uint256 amount = pendingUnstake.amount;
         uint256 shares = pendingUnstake.shares;
         // make sure user have pending unstake
-        require(pendingUnstake.epoch >= 0, "StakingPool: nothing to claim");
+        require(pendingUnstake.epoch > 0, "StakingPool: nothing to claim");
         require(pendingUnstake.epoch <= _stakingContract.currentEpoch(), "StakingPool: not ready");
         // updates shares and validator pool params
         _stakerShares[validator][msg.sender] -= shares;
