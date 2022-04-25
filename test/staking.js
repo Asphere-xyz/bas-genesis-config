@@ -90,7 +90,6 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorStatus(validator2)).totalDelegated.toString(), '2000000000000000000')
     await expectError(parlia.undelegate(validator2, '1', {from: staker2}), 'Staking: amount is too low');
     await expectError(parlia.undelegate(validator2, '1000000000000000001', {from: staker2}), 'Staking: amount have a remainder');
-    await expectError(parlia.undelegate(validator3, '1000000000000000000', {from: staker2}), 'Staking: validator not found');
     let res = await parlia.undelegate(validator2, '1000000000000000000', {from: staker2});
     assert.equal(res.logs[0].args.validator, validator2);
     assert.equal(res.logs[0].args.staker, staker2);
@@ -481,5 +480,37 @@ contract("Staking", async (accounts) => {
       validator1,
       validator2,
     ])
+  });
+  it("user can redelegate his staking rewards", async () => {
+    const {parlia} = await newMockContract(owner, {
+      genesisValidators: [ validator1 ],
+      epochBlockInterval: '10',
+    });
+    // delegate 1 ether and distribute 1 ether as rewards (100% APY) with some dust
+    await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'});
+    await waitForNextEpoch(parlia);
+    await parlia.deposit(validator1, {value: '1000000000000000123'});
+    await waitForNextEpoch(parlia);
+    // now user should have 1 ether claimable as rewards
+    let claimableRewards = await parlia.getDelegatorFee(validator1, staker1);
+    assert.equal(claimableRewards.toString(), '1000000000000000123')
+    let delegation = await parlia.getValidatorDelegation(validator1, staker1);
+    assert.equal(delegation.delegatedAmount.toString(), '1000000000000000000')
+    // now lets redelegate our rewards
+    let redelegateAmount = await parlia.calcAvailableForRedelegateAmount(validator1, staker1);
+    assert.equal(redelegateAmount.amountToStake.toString(), '1000000000000000000');
+    assert.equal(redelegateAmount.rewardsDust.toString(), '123');
+    const res1 = await parlia.redelegateDelegatorFee(validator1, {from: staker1});
+    assert.equal(res1.logs[1].event, 'Redelegated');
+    assert.equal(res1.logs[1].args.validator, validator1);
+    assert.equal(res1.logs[1].args.staker, staker1);
+    assert.equal(res1.logs[1].args.amount.toString(), '1000000000000000000');
+    assert.equal(res1.logs[1].args.dust, '123');
+    await waitForNextEpoch(parlia);
+    // now user should have 1 ether claimable as rewards
+    claimableRewards = await parlia.getDelegatorFee(validator1, staker1);
+    assert.equal(claimableRewards.toString(), '0')
+    delegation = await parlia.getValidatorDelegation(validator1, staker1);
+    assert.equal(delegation.delegatedAmount.toString(), '2000000000000000000')
   });
 });

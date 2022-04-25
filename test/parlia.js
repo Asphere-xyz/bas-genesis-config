@@ -7,7 +7,7 @@
 
 const {newMockContract} = require('./helper')
 
-contract("Staking", async (accounts) => {
+contract("Parlia", async (accounts) => {
   const [owner] = accounts
   it("can add or remove validator", async () => {
     const {parlia} = await newMockContract(owner);
