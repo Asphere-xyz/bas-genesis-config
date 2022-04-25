@@ -35,7 +35,7 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
     mapping(address => Deployer) private _contractDeployers;
     mapping(address => SmartContract) private _smartContracts;
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
     function ctor(address[] memory deployers) external whenNotInitialized {

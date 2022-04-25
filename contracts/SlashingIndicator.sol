@@ -5,7 +5,7 @@ import "./Injector.sol";
 
 contract SlashingIndicator is ISlashingIndicator, InjectorContextHolder {
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
     function ctor() external whenNotInitialized {

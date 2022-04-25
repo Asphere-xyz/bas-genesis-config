@@ -74,7 +74,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         return size > 0;
     }
 
-    function _isSystemSmartContract(address contractAddress) internal returns (bool) {
+    function _isSystemSmartContract(address contractAddress) internal view returns (bool) {
         address[] memory systemContracts = getSystemContracts();
         for (uint256 i = 0; i < systemContracts.length; i++) {
             if (systemContracts[i] == contractAddress) return true;
@@ -98,8 +98,8 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         }
         // call migration function if specified
         if (applyFunction.length > 0) {
-            (bool result,) = systemContractAddress.call(applyFunction);
-            require(result, "RuntimeUpgrade: migration failed");
+            (bool result2,) = systemContractAddress.call(applyFunction);
+            require(result2, "RuntimeUpgrade: migration failed");
         }
         // emit event
         emit SmartContractUpgrade(systemContractAddress, newByteCode);

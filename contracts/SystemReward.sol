@@ -15,7 +15,7 @@ contract SystemReward is ISystemReward, InjectorContextHolder {
     address internal _systemTreasury;
     uint256 internal _systemFee;
 
-    constructor(bytes memory ctor) InjectorContextHolder(ctor) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
     }
 
     function ctor(address systemTreasury) external whenNotInitialized {
