@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract} = require('./helper')
+const {newMockContract, expectError} = require('./helper')
 const BigNumber = require('bignumber.js');
 
 contract("SystemReward", async (accounts) => {
@@ -99,5 +99,32 @@ contract("SystemReward", async (accounts) => {
     assert.equal(res1.logs[1].args.amount.toString(), '11110');
     const dust = await systemReward.getSystemFee();
     assert.equal(dust.toString(), '1');
+  });
+  it("decrease distribution schemes change array size", async () => {
+    const {systemReward} = await newMockContract(owner, {
+      systemTreasury: {
+        [treasury]: '1000', // 10%
+        [owner]: '9000' // 90%
+      }
+    })
+    let distributionShares = await systemReward.getDistributionShares();
+    assert.equal(distributionShares.length, 2);
+    assert.equal(distributionShares[0].account, treasury);
+    assert.equal(distributionShares[0].share, '1000');
+    assert.equal(distributionShares[1].account, owner);
+    assert.equal(distributionShares[1].share, '9000');
+    await systemReward.updateDistributionShare([treasury], ['10000']);
+    distributionShares = await systemReward.getDistributionShares();
+    assert.equal(distributionShares.length, 1);
+    assert.equal(distributionShares[0].account, treasury);
+    assert.equal(distributionShares[0].share, '10000');
+  });
+  it("share distribution must be valid", async () => {
+    const {systemReward} = await newMockContract(owner)
+    await expectError(systemReward.updateDistributionShare([], []), 'SystemReward: bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['0']), 'SystemReward: bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['10001']), 'SystemReward: bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['1']), 'SystemReward: bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['9999']), 'SystemReward: bad share distribution');
   });
 });
