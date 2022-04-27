@@ -71,7 +71,7 @@ func readDirtyStorageFromState(f *state.StateObject) state.Storage {
 	return result
 }
 
-func simulateSystemContract(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, constructor []byte) error {
+func simulateSystemContract(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, constructor []byte, balance *big.Int) error {
 	artifact := &artifactData{}
 	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
 		return err
@@ -84,6 +84,7 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 	if err != nil {
 		return err
 	}
+	statedb.SetBalance(systemContract, balance)
 	block := genesis.ToBlock(nil)
 	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
 	txContext := core.NewEVMTxContext(
@@ -194,7 +195,7 @@ type genesisConfig struct {
 	ChainId         int64                     `json:"chainId"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
-	SystemTreasury  common.Address            `json:"systemTreasury"`
+	SystemTreasury  map[common.Address]uint16 `json:"systemTreasury"`
 	ConsensusParams consensusParams           `json:"consensusParams"`
 	VotingPeriod    int64                     `json:"votingPeriod"`
 	Faucet          map[common.Address]string `json:"faucet"`
@@ -202,7 +203,7 @@ type genesisConfig struct {
 	InitialStakes   map[common.Address]string `json:"initialStakes"`
 }
 
-func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool) {
+func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool, balance *big.Int) {
 	ctor, err := newArguments(typeNames...).Pack(params...)
 	if err != nil {
 		panic(err)
@@ -216,7 +217,7 @@ func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, ra
 	if !silent {
 		fmt.Printf(" + calling constructor: address=%s sig=%s ctor=%s\n", contract.Hex(), hexutil.Encode(sig), hexutil.Encode(ctor))
 	}
-	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor); err != nil {
+	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor, balance); err != nil {
 		panic(err)
 	}
 }
@@ -246,7 +247,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.Validators,
 		initialStakes,
 		uint16(config.CommissionRate),
-	}, silent)
+	}, silent, initialStakeTotal)
 	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
@@ -256,21 +257,27 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.UndelegatePeriod,
 		(*big.Int)(config.ConsensusParams.MinValidatorStakeAmount),
 		(*big.Int)(config.ConsensusParams.MinStakingAmount),
-	}, silent)
-	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, silent)
-	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, silent)
-	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address"}, []interface{}{
-		config.SystemTreasury,
-	}, silent)
+	}, silent, nil)
+	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, silent, nil)
+	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, silent, nil)
+	var treasuryAddresses []common.Address
+	var treasuryShares []uint16
+	for k, v := range config.SystemTreasury {
+		treasuryAddresses = append(treasuryAddresses, k)
+		treasuryShares = append(treasuryShares, v)
+	}
+	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address[]", "uint16[]"}, []interface{}{
+		treasuryAddresses, treasuryShares,
+	}, silent, nil)
 	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
 		big.NewInt(config.VotingPeriod),
-	}, silent)
+	}, silent, nil)
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
 		systemcontract.EvmHookRuntimeUpgradeAddress,
-	}, silent)
+	}, silent, nil)
 	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
-	}, silent)
+	}, silent, nil)
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
 		Balance: big.NewInt(0),
@@ -349,7 +356,9 @@ var localNetConfig = genesisConfig{
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
 	},
-	SystemTreasury: common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
+	SystemTreasury: map[common.Address]uint16{
+		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): 10000,
+	},
 	ConsensusParams: consensusParams{
 		ActiveValidatorsLength:   1,
 		EpochBlockInterval:       100,
@@ -385,7 +394,9 @@ var devNetConfig = genesisConfig{
 		common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
 		common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
 	},
-	SystemTreasury: common.HexToAddress(""),
+	SystemTreasury: map[common.Address]uint16{
+		common.HexToAddress("0x0000000000000000000000000000000000000000"): 10000,
+	},
 	ConsensusParams: consensusParams{
 		ActiveValidatorsLength:   25,   // suggested values are (3k+1, where k is honest validators, even better): 7, 13, 19, 25, 31...
 		EpochBlockInterval:       1200, // better to use 1 day epoch (86400/3=28800, where 3s is block time)

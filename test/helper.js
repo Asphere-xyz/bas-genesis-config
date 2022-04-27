@@ -14,6 +14,7 @@ const DeployerProxy = artifacts.require("DeployerProxy");
 const FakeStaking = artifacts.require("FakeStaking");
 const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
 const FakeRuntimeUpgrade = artifacts.require("FakeRuntimeUpgrade");
+const FakeSystemReward = artifacts.require("FakeSystemReward");
 
 const DEFAULT_MOCK_PARAMS = {
   systemTreasury: '0x0000000000000000000000000000000000000000',
@@ -58,7 +59,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     RuntimeUpgrade,
     DeployerProxy,
   } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
-  const {
+  let {
     genesisDeployers,
     systemTreasury,
     activeValidatorsLength,
@@ -78,7 +79,10 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     [genesisValidators, genesisValidators.map(() => '0'), '0'])
   );
   const slashingIndicator = await SlashingIndicator.new(createConstructorArgs([], []));
-  const systemReward = await SystemReward.new(createConstructorArgs(['address'], [systemTreasury]));
+  if (typeof systemTreasury === 'string') {
+    systemTreasury = {[systemTreasury]: '10000'}
+  }
+  const systemReward = await SystemReward.new(createConstructorArgs(['address[]', 'uint16[]'], [Object.keys(systemTreasury), Object.values(systemTreasury)]));
   const governance = await Governance.new(createConstructorArgs(['uint256'], ['1']));
   const chainConfig = await ChainConfig.new(createConstructorArgs(
     ["uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"],
@@ -120,6 +124,7 @@ const newMockContract = async (owner, params = {}) => {
     Staking: FakeStaking,
     RuntimeUpgrade: FakeRuntimeUpgrade,
     DeployerProxy: FakeDeployerProxy,
+    SystemReward: FakeSystemReward,
   });
 }
 
