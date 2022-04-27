@@ -1,4 +1,7 @@
+.*ignore
 .git
+.gitattributes
+*.md
 coverage
 build
 node_modules
