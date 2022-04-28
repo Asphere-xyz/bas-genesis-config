@@ -23,7 +23,7 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
     }
 
     function getVotingPower(address validator) external view returns (uint256) {
-        return _validatorVotingPowerAt(validator, block.number);
+        return _validatorOwnerVotingPowerAt(validator, block.number);
     }
 
     function proposeWithCustomVotingPeriod(
@@ -63,15 +63,15 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
     }
 
     function getVotes(address account, uint256 blockNumber) public view override returns (uint256) {
-        return _validatorVotingPowerAt(account, blockNumber);
+        return _validatorOwnerVotingPowerAt(account, blockNumber);
     }
 
-    function _validatorVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
+    function _validatorOwnerVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
         address validator = _stakingContract.getValidatorByOwner(validatorOwner);
-        // only active validators can vote
-        if (!_stakingContract.isValidatorActive(validator)) {
-            return 0;
-        }
+        return _validatorVotingPowerAt(validator, blockNumber);
+    }
+
+    function _validatorVotingPowerAt(address validator, uint256 blockNumber) internal view returns (uint256) {
         // find validator votes at block number
         uint64 epoch = uint64(blockNumber / _chainConfigContract.getEpochBlockInterval());
         (,,uint256 totalDelegated,,,,,,) = _stakingContract.getValidatorStatusAtEpoch(validator, epoch);
