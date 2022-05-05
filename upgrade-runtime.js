@@ -19,16 +19,36 @@ const askFor = async (question) => {
   })
 }
 
+const STAKING_ADDRESS = '0x0000000000000000000000000000000000001000';
+const SLASHING_INDICATOR_ADDRESS = '0x0000000000000000000000000000000000001001';
+const SYSTEM_REWARD_ADDRESS = '0x0000000000000000000000000000000000001002';
+const STAKING_POOL_ADDRESS = '0x0000000000000000000000000000000000007001';
+const GOVERNANCE_ADDRESS = '0x0000000000000000000000000000000000007002';
+const CHAIN_CONFIG_ADDRESS = '0x0000000000000000000000000000000000007003';
+const RUNTIME_UPGRADE_ADDRESS = '0x0000000000000000000000000000000000007004';
+const DEPLOYER_PROXY_ADDRESS = '0x0000000000000000000000000000000000007005';
+
+const ALL_ADDRESSES = [
+  STAKING_ADDRESS,
+  SLASHING_INDICATOR_ADDRESS,
+  SYSTEM_REWARD_ADDRESS,
+  STAKING_POOL_ADDRESS,
+  GOVERNANCE_ADDRESS,
+  CHAIN_CONFIG_ADDRESS,
+  RUNTIME_UPGRADE_ADDRESS,
+  DEPLOYER_PROXY_ADDRESS,
+];
+
 const readByteCodeForAddress = address => {
   const artifactPaths = {
-    '0x0000000000000000000000000000000000001000': './build/contracts/Staking.json',
-    '0x0000000000000000000000000000000000001001': './build/contracts/SlashingIndicator.json',
-    '0x0000000000000000000000000000000000001002': './build/contracts/SystemReward.json',
-    '0x0000000000000000000000000000000000007001': './build/contracts/StakingPool.json',
-    '0x0000000000000000000000000000000000007002': './build/contracts/Governance.json',
-    '0x0000000000000000000000000000000000007003': './build/contracts/ChainConfig.json',
-    '0x0000000000000000000000000000000000007004': './build/contracts/RuntimeUpgrade.json',
-    '0x0000000000000000000000000000000000007005': './build/contracts/DeployerProxy.json',
+    [STAKING_ADDRESS]: './build/contracts/Staking.json',
+    [SLASHING_INDICATOR_ADDRESS]: './build/contracts/SlashingIndicator.json',
+    [SYSTEM_REWARD_ADDRESS]: './build/contracts/SystemReward.json',
+    [STAKING_POOL_ADDRESS]: './build/contracts/StakingPool.json',
+    [GOVERNANCE_ADDRESS]: './build/contracts/Governance.json',
+    [CHAIN_CONFIG_ADDRESS]: './build/contracts/ChainConfig.json',
+    [RUNTIME_UPGRADE_ADDRESS]: './build/contracts/RuntimeUpgrade.json',
+    [DEPLOYER_PROXY_ADDRESS]: './build/contracts/DeployerProxy.json',
   }
   const filePath = artifactPaths[address]
   if (!filePath) throw new Error(`There is no artifact for the address: ${address}`)
@@ -39,10 +59,6 @@ const readByteCodeForAddress = address => {
 const sleepFor = async ms => {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
-
-const STAKING_ADDRESS = '0x0000000000000000000000000000000000001000';
-const GOVERNANCE_ADDRESS = '0x0000000000000000000000000000000000007002';
-const RUNTIME_UPGRADE_ADDRESS = '0x0000000000000000000000000000000000007004';
 
 const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded', 'Queued', 'Expired', 'Executed'];
 
@@ -70,90 +86,110 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
   if (!someValidator) {
     throw new Error(`There is no validators in the network, its not possible`)
   }
-  // create new runtime upgrade proposal
-  const contractAddress = await askFor('What address you\'d like to upgrade? '),
-    byteCode = readByteCodeForAddress(contractAddress)
-  const desc = `Runtime upgrade for the smart contract (${new Date().getTime()})`;
-  const upgradeCall = runtimeUpgrade.methods.upgradeSystemSmartContract(contractAddress, byteCode, '0x').encodeABI(),
-    governanceCall = governance.methods.propose([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], desc).encodeABI()
-  const signTx = async (account, {to, data}) => {
-    const nonce = await web3.eth.getTransactionCount(account.address),
-      chainId = await web3.eth.getChainId()
-    const txOpts = {
-      from: account.address,
-      gas: 2_000_000,
-      gasPrice: 5e9,
-      nonce: nonce,
-      to: to,
-      data: data,
-      chainId: chainId,
-    }
-    await web3.eth.call(txOpts)
-    return account.signTransaction(txOpts)
-  }
-  const {rawTransaction, transactionHash} = await signTx(someValidator, {
-    to: GOVERNANCE_ADDRESS,
-    data: governanceCall,
-  });
-  console.log(`Creating proposal: ${transactionHash}`);
-  const proposeReceipt = await web3.eth.sendSignedTransaction(rawTransaction);
-  const proposalId = proposeReceipt.logs[0].data.substring(0, 66)
-  // let's vote for this proposal using all our validators
-  console.log(`Waiting for the proposal become active`);
-  while (true) {
-    const state = await governance.methods.state(proposalId).call(),
-      status = proposalStates[Number(state)];
-    if (status === 'Active') {
-      console.log(`Proposal is active, we can start voting process`);
-      break;
-    } else if (status !== 'Pending') {
-      console.error(`Incorrect proposal status: ${status}`)
+  const upgradeSystemContractByteCode = async (contractAddress) => {
+    const byteCode = readByteCodeForAddress(contractAddress),
+      existingByteCode = await web3.eth.getCode(contractAddress)
+    if (byteCode === existingByteCode) {
+      console.log(` ~ bytecode is the same, skipping ~ `);
       return;
     }
-    await sleepFor(1_000)
-  }
-  console.log(`Voting for the proposal (${proposalId}):`);
-  for (const validatorAddress of activeValidatorSet) {
-    const account = keystoreKeys[validatorAddress.toLowerCase()],
-      castCall = governance.methods.castVote(proposalId, '1').encodeABI()
-    const {rawTransaction, transactionHash} = await signTx(account, {
-      to: GOVERNANCE_ADDRESS,
-      data: castCall,
-    })
-    console.log(` ~ validator ${validatorAddress} is voting: ${transactionHash}`)
-    await web3.eth.sendSignedTransaction(rawTransaction)
-  }
-  // now we can execute the proposal
-  while (true) {
-    const currentBlock = await web3.eth.getBlockNumber()
-    const state = await governance.methods.state(proposalId).call(),
-      status = proposalStates[Number(state)];
-    const deadline = await governance.methods.proposalDeadline(proposalId).call();
-    console.log(`Current proposal status is: ${status}, current block is: ${currentBlock} deadline is: ${deadline}, elapsed: ${deadline - currentBlock}`)
-    switch (status) {
-      case 'Pending':
-      case 'Active': {
-        break;
+    const desc = `Runtime upgrade for the smart contract (${new Date().getTime()})`;
+    const upgradeCall = runtimeUpgrade.methods.upgradeSystemSmartContract(contractAddress, byteCode, '0x').encodeABI(),
+      governanceCall = governance.methods.propose([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], desc).encodeABI()
+    const signTx = async (account, {to, data}) => {
+      const nonce = await web3.eth.getTransactionCount(account.address),
+        chainId = await web3.eth.getChainId()
+      const txOpts = {
+        from: account.address,
+        gas: 2_000_000,
+        gasPrice: 5e9,
+        nonce: nonce,
+        to: to,
+        data: data,
+        chainId: chainId,
       }
-      case 'Succeeded': {
-        const executeCall = governance.methods.execute([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], web3.utils.keccak256(desc)).encodeABI()
-        const {rawTransaction, transactionHash} = await signTx(someValidator, {
-          to: GOVERNANCE_ADDRESS,
-          data: executeCall,
-        });
-        console.log(`Executing proposal: ${transactionHash}`);
-        await web3.eth.sendSignedTransaction(rawTransaction);
-        break;
-      }
-      case 'Executed': {
-        console.log(`Proposal was successfully executed`);
-        return;
-      }
-      default: {
-        console.error(`Incorrect proposal status, upgrade failed: ${status}, exiting`)
-        return;
-      }
+      await web3.eth.call(txOpts)
+      return account.signTransaction(txOpts)
     }
-    await sleepFor(3_000)
+    const {rawTransaction, transactionHash} = await signTx(someValidator, {
+      to: GOVERNANCE_ADDRESS,
+      data: governanceCall,
+    });
+    console.log(`Creating proposal: ${transactionHash}`);
+    const proposeReceipt = await web3.eth.sendSignedTransaction(rawTransaction);
+    const proposalId = proposeReceipt.logs[0].data.substring(0, 66)
+    // let's vote for this proposal using all our validators
+    console.log(`Waiting for the proposal become active`);
+    while (true) {
+      const state = await governance.methods.state(proposalId).call(),
+        status = proposalStates[Number(state)];
+      if (status === 'Active') {
+        console.log(`Proposal is active, we can start voting process`);
+        break;
+      } else if (status !== 'Pending') {
+        console.error(`Incorrect proposal status: ${status}`)
+        return;
+      }
+      await sleepFor(1_000)
+    }
+    console.log(`Voting for the proposal (${proposalId}):`);
+    for (const validatorAddress of activeValidatorSet) {
+      const account = keystoreKeys[validatorAddress.toLowerCase()],
+        castCall = governance.methods.castVote(proposalId, '1').encodeABI()
+      const {rawTransaction, transactionHash} = await signTx(account, {
+        to: GOVERNANCE_ADDRESS,
+        data: castCall,
+      })
+      console.log(` ~ validator ${validatorAddress} is voting: ${transactionHash}`)
+      await web3.eth.sendSignedTransaction(rawTransaction)
+    }
+    // now we can execute the proposal
+    while (true) {
+      const currentBlock = await web3.eth.getBlockNumber()
+      const state = await governance.methods.state(proposalId).call(),
+        status = proposalStates[Number(state)];
+      const deadline = await governance.methods.proposalDeadline(proposalId).call();
+      console.log(`Current proposal status is: ${status}, current block is: ${currentBlock} deadline is: ${deadline}, elapsed: ${deadline - currentBlock}`)
+      switch (status) {
+        case 'Pending':
+        case 'Active': {
+          break;
+        }
+        case 'Succeeded': {
+          const executeCall = governance.methods.execute([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], web3.utils.keccak256(desc)).encodeABI()
+          const {rawTransaction, transactionHash} = await signTx(someValidator, {
+            to: GOVERNANCE_ADDRESS,
+            data: executeCall,
+          });
+          console.log(`Executing proposal: ${transactionHash}`);
+          await web3.eth.sendSignedTransaction(rawTransaction);
+          break;
+        }
+        case 'Executed': {
+          console.log(`Proposal was successfully executed`);
+          return;
+        }
+        default: {
+          console.error(`Incorrect proposal status, upgrade failed: ${status}, exiting`)
+          return;
+        }
+      }
+      await sleepFor(12_000)
+    }
+  }
+  // create new runtime upgrade proposal
+  const contractAddress = await askFor('What address you\'d like to upgrade? ')
+  if (contractAddress === 'auto') {
+    for (const address of ALL_ADDRESSES) {
+      console.log(`Upgrading smart contract: ${address}`);
+      console.log(`---------------------------`);
+      await upgradeSystemContractByteCode(address)
+      console.log(`---------------------------`);
+      console.log()
+    }
+  } else if (!ALL_ADDRESSES.includes(contractAddress)) {
+    throw new Error(`Not supported contract address: ${contractAddress}`)
+  } else {
+    await upgradeSystemContractByteCode(contractAddress)
   }
 })();
