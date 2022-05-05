@@ -62,13 +62,13 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
         return GovernorSettings.votingPeriod();
     }
 
-    function getVotes(address account, uint256 blockNumber) public view override returns (uint256) {
+    function _getVotes(address account, uint256 blockNumber, bytes memory /*params*/) internal view virtual override returns (uint256) {
         return _validatorOwnerVotingPowerAt(account, blockNumber);
     }
 
-    function _castVote(uint256 proposalId, address account, uint8 support, string memory reason) internal virtual override onlyValidatorOwner(account) returns (uint256) {
+    function _countVote(uint256 proposalId, address account, uint8 support, uint256 weight, bytes memory params) internal virtual override(Governor, GovernorCountingSimple) {
         address validatorAddress = _stakingContract.getValidatorByOwner(account);
-        return super._castVote(proposalId, validatorAddress, support, reason);
+        return super._countVote(proposalId, validatorAddress, support, weight, params);
     }
 
     function _validatorOwnerVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
