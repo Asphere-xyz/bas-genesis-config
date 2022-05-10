@@ -56,6 +56,7 @@ contract Staking is IStaking, InjectorContextHolder {
     event ValidatorOwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
     event ValidatorSlashed(address indexed validator, uint32 slashes, uint64 epoch);
     event ValidatorJailed(address indexed validator, uint64 epoch);
+    event ValidatorReleased(address indexed validator, uint64 epoch);
 
     // staker events
     event Delegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
@@ -206,6 +207,8 @@ contract Staking is IStaking, InjectorContextHolder {
         validator.status = ValidatorStatus.Active;
         _validatorsMap[validatorAddress] = validator;
         _activeValidatorsList.push(validatorAddress);
+        // emit event
+        emit ValidatorReleased(validatorAddress, _currentEpoch());
     }
 
     function _totalDelegatedToValidator(Validator memory validator) internal view returns (uint256) {
