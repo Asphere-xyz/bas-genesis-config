@@ -35,7 +35,7 @@ const ALL_ADDRESSES = [
   STAKING_POOL_ADDRESS,
   GOVERNANCE_ADDRESS,
   CHAIN_CONFIG_ADDRESS,
-  RUNTIME_UPGRADE_ADDRESS,
+  // RUNTIME_UPGRADE_ADDRESS (runtime upgrade can't be upgraded)
   DEPLOYER_PROXY_ADDRESS,
 ];
 
@@ -136,7 +136,7 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
     }
     const desc = `Runtime upgrade for the smart contract (${new Date().getTime()})`;
     const upgradeCall = runtimeUpgrade.methods.upgradeSystemSmartContract(contractAddress, byteCode, '0x').encodeABI(),
-      governanceCall = governance.methods.propose([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], desc).encodeABI()
+      governanceCall = governance.methods.proposeWithCustomVotingPeriod([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], desc, '20').encodeABI()
     const {rawTransaction, transactionHash} = await signTx(someValidator, {
       to: GOVERNANCE_ADDRESS,
       data: governanceCall,
