@@ -1,3 +1,7 @@
+.PHONY: clean
+clean:
+	rm -rf ./build
+
 .PHONY: install
 install:
 	yarn
@@ -6,9 +10,13 @@ install:
 compile:
 	yarn compile && node build-abi.js
 
+.PHONY: test
+test:
+	yarn coverage
+
 .PHONY: create-genesis
 create-genesis:
 	go run ./create-genesis.go
 
 .PHONY: all
-all: install compile create-genesis
+all: clean install compile create-genesis

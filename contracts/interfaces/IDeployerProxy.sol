@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "./IEvmHooks.sol";
+interface IDeployerProxy {
 
-interface IContractDeployer is IEvmHooks {
+    function registerDeployedContract(address account, address impl) external;
+
+    function checkContractActive(address impl) external;
 
     function isDeployer(address account) external view returns (bool);
 
@@ -18,4 +20,8 @@ interface IContractDeployer is IEvmHooks {
     function unbanDeployer(address account) external;
 
     function removeDeployer(address account) external;
+
+    function disableContract(address contractAddress) external;
+
+    function enableContract(address contractAddress) external;
 }

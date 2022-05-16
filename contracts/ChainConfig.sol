@@ -11,6 +11,8 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
     event FelonyThresholdChanged(uint32 prevValue, uint32 newValue);
     event ValidatorJailEpochLengthChanged(uint32 prevValue, uint32 newValue);
     event UndelegatePeriodChanged(uint32 prevValue, uint32 newValue);
+    event MinValidatorStakeAmountChanged(uint256 prevValue, uint256 newValue);
+    event MinStakingAmountChanged(uint256 prevValue, uint256 newValue);
 
     struct ConsensusParams {
         uint32 activeValidatorsLength;
@@ -19,18 +21,25 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 felonyThreshold;
         uint32 validatorJailEpochLength;
         uint32 undelegatePeriod;
+        uint256 minValidatorStakeAmount;
+        uint256 minStakingAmount;
     }
 
     ConsensusParams private _consensusParams;
 
-    constructor(
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
+    }
+
+    function ctor(
         uint32 activeValidatorsLength,
         uint32 epochBlockInterval,
         uint32 misdemeanorThreshold,
         uint32 felonyThreshold,
         uint32 validatorJailEpochLength,
-        uint32 undelegatePeriod
-    ) {
+        uint32 undelegatePeriod,
+        uint256 minValidatorStakeAmount,
+        uint256 minStakingAmount
+    ) external whenNotInitialized {
         _consensusParams.activeValidatorsLength = activeValidatorsLength;
         emit ActiveValidatorsLengthChanged(0, activeValidatorsLength);
         _consensusParams.epochBlockInterval = epochBlockInterval;
@@ -43,6 +52,10 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         emit ValidatorJailEpochLengthChanged(0, validatorJailEpochLength);
         _consensusParams.undelegatePeriod = undelegatePeriod;
         emit UndelegatePeriodChanged(0, undelegatePeriod);
+        _consensusParams.minValidatorStakeAmount = minValidatorStakeAmount;
+        emit MinValidatorStakeAmountChanged(0, minValidatorStakeAmount);
+        _consensusParams.minStakingAmount = minStakingAmount;
+        emit MinStakingAmountChanged(0, minStakingAmount);
     }
 
     function getActiveValidatorsLength() external view override returns (uint32) {
@@ -103,5 +116,25 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 prevValue = _consensusParams.undelegatePeriod;
         _consensusParams.undelegatePeriod = newValue;
         emit UndelegatePeriodChanged(prevValue, newValue);
+    }
+
+    function getMinValidatorStakeAmount() external view returns (uint256) {
+        return _consensusParams.minValidatorStakeAmount;
+    }
+
+    function setMinValidatorStakeAmount(uint256 newValue) external override onlyFromGovernance {
+        uint256 prevValue = _consensusParams.minValidatorStakeAmount;
+        _consensusParams.minValidatorStakeAmount = newValue;
+        emit MinValidatorStakeAmountChanged(prevValue, newValue);
+    }
+
+    function getMinStakingAmount() external view returns (uint256) {
+        return _consensusParams.minStakingAmount;
+    }
+
+    function setMinStakingAmount(uint256 newValue) external override onlyFromGovernance {
+        uint256 prevValue = _consensusParams.minStakingAmount;
+        _consensusParams.minStakingAmount = newValue;
+        emit MinStakingAmountChanged(prevValue, newValue);
     }
 }

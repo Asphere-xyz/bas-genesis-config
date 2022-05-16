@@ -7,7 +7,7 @@
 
 const {newMockContract} = require('./helper')
 
-contract("Staking", async (accounts) => {
+contract("Parlia", async (accounts) => {
   const [owner] = accounts
   it("can add or remove validator", async () => {
     const {parlia} = await newMockContract(owner);
@@ -72,15 +72,5 @@ contract("Staking", async (accounts) => {
       '0x0000000000000000000000000000000000000001',
       '0x0000000000000000000000000000000000000002',
     ])
-  })
-  it("test contract genesis creation", async () => {
-    const Staking = artifacts.require("Staking");
-    await Staking.new(
-      [
-        '0x0000000000000000000000000000000000000001',
-        '0x0000000000000000000000000000000000000002',
-        '0x0000000000000000000000000000000000000003',
-      ],
-    );
   })
 });

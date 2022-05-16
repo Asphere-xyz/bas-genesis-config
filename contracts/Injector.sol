@@ -2,56 +2,122 @@
 pragma solidity ^0.8.0;
 
 import "./interfaces/IChainConfig.sol";
-import "./interfaces/IEvmHooks.sol";
-import "./interfaces/IContractDeployer.sol";
 import "./interfaces/IGovernance.sol";
 import "./interfaces/ISlashingIndicator.sol";
 import "./interfaces/ISystemReward.sol";
+import "./interfaces/IRuntimeUpgradeEvmHook.sol";
 import "./interfaces/IValidatorSet.sol";
 import "./interfaces/IStaking.sol";
+import "./interfaces/IRuntimeUpgrade.sol";
+import "./interfaces/IStakingPool.sol";
 import "./interfaces/IInjector.sol";
+import "./interfaces/IDeployerProxy.sol";
 
-abstract contract InjectorContextHolder is IInjector {
+abstract contract AlreadyInit {
 
-    bool private _init;
-    uint256 private _operatingBlock;
+    // flag indicating is smart contract initialized already
+    bool internal _init;
+
+    modifier initializer() {
+        require(!_init, "Injector: already initialized");
+        _;
+        _init = true;
+    }
+
+    modifier whenNotInitialized() {
+        require(!_init, "Injector: already initialized");
+        _;
+    }
+
+    modifier whenInitialized() {
+        require(_init, "Injector: not initialized yet");
+        _;
+    }
+}
+
+abstract contract InjectorContextHolder is AlreadyInit, IInjector {
+
+    // system smart contract constructor
+    bytes internal _ctor;
 
     // BSC compatible contracts
     IStaking internal _stakingContract;
     ISlashingIndicator internal _slashingIndicatorContract;
     ISystemReward internal _systemRewardContract;
-    // CCv2 defined contracts
-    IContractDeployer internal _contractDeployerContract;
+    // BAS defined contracts
+    IStakingPool internal _stakingPoolContract;
     IGovernance internal _governanceContract;
     IChainConfig internal _chainConfigContract;
+    IRuntimeUpgrade internal _runtimeUpgradeContract;
+    IDeployerProxy internal _deployerProxyContract;
 
-    uint256[100 - 8] private __reserved;
+    // already init (1) + ctor(1) + injector (8) = 10
+    uint256[100 - 10] private __reserved;
 
-    function init() public whenNotInitialized virtual {
+    constructor(bytes memory constructorParams) {
+        // save constructor params to use them in the init function
+        _ctor = constructorParams;
+    }
+
+    function init() external initializer {
         // BSC compatible addresses
         _stakingContract = IStaking(0x0000000000000000000000000000000000001000);
         _slashingIndicatorContract = ISlashingIndicator(0x0000000000000000000000000000000000001001);
         _systemRewardContract = ISystemReward(0x0000000000000000000000000000000000001002);
-        // CCv2 defined addresses
-        _contractDeployerContract = IContractDeployer(0x0000000000000000000000000000000000007001);
+        // BAS defined addresses
+        _stakingPoolContract = IStakingPool(0x0000000000000000000000000000000000007001);
         _governanceContract = IGovernance(0x0000000000000000000000000000000000007002);
         _chainConfigContract = IChainConfig(0x0000000000000000000000000000000000007003);
+        _runtimeUpgradeContract = IRuntimeUpgrade(0x0000000000000000000000000000000000007004);
+        _deployerProxyContract = IDeployerProxy(0x0000000000000000000000000000000000007005);
+        // invoke constructor
+        _invokeContractConstructor();
     }
 
     function initManually(
         IStaking stakingContract,
         ISlashingIndicator slashingIndicatorContract,
         ISystemReward systemRewardContract,
-        IContractDeployer deployerContract,
+        IStakingPool stakingPoolContract,
         IGovernance governanceContract,
-        IChainConfig chainConfigContract
-    ) public whenNotInitialized {
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) public initializer {
+        // BSC-compatible
         _stakingContract = stakingContract;
         _slashingIndicatorContract = slashingIndicatorContract;
         _systemRewardContract = systemRewardContract;
-        _contractDeployerContract = deployerContract;
+        // BAS-defined
+        _stakingPoolContract = stakingPoolContract;
         _governanceContract = governanceContract;
         _chainConfigContract = chainConfigContract;
+        _runtimeUpgradeContract = runtimeUpgradeContract;
+        _deployerProxyContract = deployerProxyContract;
+        // invoke constructor
+        _invokeContractConstructor();
+    }
+
+    function _invokeContractConstructor() internal {
+        if (_ctor.length == 0) {
+            return;
+        }
+        (bool success, bytes memory returnData) = address(this).call(_ctor);
+        // if everything is success then just exit w/o revert
+        if (success) {
+            return;
+        }
+        if (returnData.length == 0) {
+            revert("Injector: construction failed w/ unknown error");
+        }
+        assembly {
+            let returnDataSize := mload(returnData)
+            revert(add(32, returnData), returnDataSize)
+        }
+    }
+
+    function isInitialized() external view returns (bool) {
+        return _init;
     }
 
     modifier onlyFromCoinbase() {
@@ -59,8 +125,8 @@ abstract contract InjectorContextHolder is IInjector {
         _;
     }
 
-    modifier onlyFromCoinbaseOrSlashingIndicator() {
-        require(msg.sender == block.coinbase || msg.sender == address(_slashingIndicatorContract), "InjectorContextHolder: only coinbase or slashing indicator");
+    modifier onlyFromSlashingIndicator() {
+        require(msg.sender == address(_slashingIndicatorContract), "InjectorContextHolder: only slashing indicator");
         _;
     }
 
@@ -69,26 +135,14 @@ abstract contract InjectorContextHolder is IInjector {
         _;
     }
 
+    modifier onlyFromRuntimeUpgrade() {
+        require(IRuntimeUpgrade(msg.sender) == _runtimeUpgradeContract, "InjectorContextHolder: only runtime upgrade");
+        _;
+    }
+
     modifier onlyZeroGasPrice() {
         require(tx.gasprice == 0, "InjectorContextHolder: only zero gas price");
         _;
-    }
-
-    modifier whenNotInitialized() {
-        require(!_init, "OnlyInit: already initialized");
-        _;
-        _init = true;
-    }
-
-    modifier whenInitialized() {
-        require(_init, "OnlyInit: not initialized yet");
-        _;
-    }
-
-    modifier onlyOncePerBlock() {
-        require(block.number > _operatingBlock, "InjectorContextHolder: only once per block");
-        _;
-        _operatingBlock = block.number;
     }
 
     function getStaking() public view returns (IStaking) {
@@ -103,8 +157,8 @@ abstract contract InjectorContextHolder is IInjector {
         return _systemRewardContract;
     }
 
-    function getContractDeployer() public view returns (IContractDeployer) {
-        return _contractDeployerContract;
+    function getStakingPool() public view returns (IStakingPool) {
+        return _stakingPoolContract;
     }
 
     function getGovernance() public view returns (IGovernance) {

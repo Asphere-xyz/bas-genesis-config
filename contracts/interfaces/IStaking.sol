@@ -5,6 +5,10 @@ import "./IValidatorSet.sol";
 
 interface IStaking is IValidatorSet {
 
+    function currentEpoch() external view returns (uint64);
+
+    function nextEpoch() external view returns (uint64);
+
     function isValidatorActive(address validator) external view returns (bool);
 
     function isValidator(address validator) external view returns (bool);
@@ -16,7 +20,9 @@ interface IStaking is IValidatorSet {
         uint32 slashesCount,
         uint64 changedAt,
         uint64 jailedBefore,
-        uint64 claimedAt
+        uint64 claimedAt,
+        uint16 commissionRate,
+        uint96 totalRewards
     );
 
     function getValidatorStatusAtEpoch(address validator, uint64 epoch) external view returns (
@@ -26,7 +32,9 @@ interface IStaking is IValidatorSet {
         uint32 slashesCount,
         uint64 changedAt,
         uint64 jailedBefore,
-        uint64 claimedAt
+        uint64 claimedAt,
+        uint16 commissionRate,
+        uint96 totalRewards
     );
 
     function getValidatorByOwner(address owner) external view returns (address);
@@ -54,7 +62,7 @@ interface IStaking is IValidatorSet {
 
     function delegate(address validator) payable external;
 
-    function undelegate(address validator, uint256 amount) payable external;
+    function undelegate(address validator, uint256 amount) external;
 
     function getValidatorFee(address validator) external view returns (uint256);
 
@@ -62,11 +70,19 @@ interface IStaking is IValidatorSet {
 
     function claimValidatorFee(address validator) external;
 
+    function claimValidatorFeeAtEpoch(address validator, uint64 beforeEpoch) external;
+
     function getDelegatorFee(address validator, address delegator) external view returns (uint256);
 
     function getPendingDelegatorFee(address validator, address delegator) external view returns (uint256);
 
     function claimDelegatorFee(address validator) external;
+
+    function calcAvailableForRedelegateAmount(address validator, address delegator) external view returns (uint256 amountToStake, uint256 rewardsDust);
+
+    function redelegateDelegatorFee(address validator) external;
+
+    function claimDelegatorFeeAtEpoch(address validator, uint64 beforeEpoch) external;
 
     function slash(address validator) external;
 }

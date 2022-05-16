@@ -3,12 +3,14 @@ pragma solidity ^0.8.0;
 
 import "./Injector.sol";
 
-contract ContractDeployer is IContractDeployer, InjectorContextHolder {
+contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
 
     event DeployerAdded(address indexed account);
     event DeployerRemoved(address indexed account);
     event DeployerBanned(address indexed account);
     event DeployerUnbanned(address indexed account);
+    event ContractDisabled(address indexed contractAddress);
+    event ContractEnabled(address indexed contractAddress);
 
     event ContractDeployed(address indexed account, address impl);
 
@@ -33,7 +35,10 @@ contract ContractDeployer is IContractDeployer, InjectorContextHolder {
     mapping(address => Deployer) private _contractDeployers;
     mapping(address => SmartContract) private _smartContracts;
 
-    constructor(address[] memory deployers) {
+    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
+    }
+
+    function ctor(address[] memory deployers) external whenNotInitialized {
         for (uint256 i = 0; i < deployers.length; i++) {
             _addDeployer(deployers[i]);
         }
@@ -126,5 +131,31 @@ contract ContractDeployer is IContractDeployer, InjectorContextHolder {
         // check that contract is not disabled
         SmartContract memory dc = _smartContracts[impl];
         require(dc.state != ContractState.Disabled, "Deployer: contract is not enabled");
+    }
+
+    function disableContract(address impl) public onlyFromGovernance virtual override {
+        _disableContract(impl);
+    }
+
+    function enableContract(address impl) public onlyFromGovernance virtual override {
+        _enableContract(impl);
+    }
+
+    function _disableContract(address contractAddress) internal {
+        SmartContract memory dc = _smartContracts[contractAddress];
+        require(dc.state == ContractState.Enabled, "Deployer: contract already disabled");
+        dc.state = ContractState.Disabled;
+        _smartContracts[contractAddress] = dc;
+        //emit event
+        emit ContractDisabled(contractAddress);
+    }
+
+    function _enableContract(address contractAddress) internal {
+        SmartContract memory dc = _smartContracts[contractAddress];
+        require(dc.state == ContractState.Disabled, "Deployer: contract already enabled");
+        dc.state = ContractState.Enabled;
+        _smartContracts[contractAddress] = dc;
+        //emit event
+        emit ContractEnabled(contractAddress);
     }
 }

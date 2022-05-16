@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "../ContractDeployer.sol";
+import "../DeployerProxy.sol";
 
-contract FakeContractDeployer is ContractDeployer {
+contract FakeDeployerProxy is DeployerProxy {
 
-    constructor(address[] memory deployers) ContractDeployer(deployers) {
+    constructor(bytes memory ctor) DeployerProxy(ctor) {
     }
 
     function addDeployer(address account) public override {
@@ -30,5 +30,13 @@ contract FakeContractDeployer is ContractDeployer {
 
     function checkContractActive(address impl) external view override {
         _checkContractActive(impl);
+    }
+
+    function disableContract(address impl) public override {
+        _disableContract(impl);
+    }
+
+    function enableContract(address impl) public override {
+        _enableContract(impl);
     }
 }
