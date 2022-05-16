@@ -56,6 +56,7 @@ contract Staking is IStaking, InjectorContextHolder {
     event ValidatorOwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
     event ValidatorSlashed(address indexed validator, uint32 slashes, uint64 epoch);
     event ValidatorJailed(address indexed validator, uint64 epoch);
+    event ValidatorDeposited(address indexed validator, uint256 amount, uint64 epoch);
     event ValidatorReleased(address indexed validator, uint64 epoch);
 
     // staker events
@@ -684,9 +685,12 @@ contract Staking is IStaking, InjectorContextHolder {
         // make sure validator is active
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "Staking: validator not found");
+        uint64 epoch = _currentEpoch();
         // increase total pending rewards for validator for current epoch
-        ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, _currentEpoch());
+        ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);
         currentSnapshot.totalRewards += uint96(msg.value);
+        // emit event
+        emit ValidatorDeposited(validatorAddress, msg.value, epoch);
     }
 
     function getValidatorFee(address validatorAddress) external override view returns (uint256) {

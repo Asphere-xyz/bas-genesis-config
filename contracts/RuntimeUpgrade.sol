@@ -31,7 +31,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         // we allow to upgrade only system smart contracts
         require(_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only system smart contract");
         // upgrade system contract
-        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction);
+        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction, IRuntimeUpgradeEvmHook.upgradeTo.selector);
     }
 
     function deploySystemSmartContract(
@@ -41,8 +41,9 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     ) external onlyFromGovernance virtual override {
         // disallow to upgrade plain contracts or system contracts (only new)
         require(!_isContract(systemContractAddress) && !_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only new address");
+        require(systemContractAddress != address(_runtimeUpgradeContract), "RuntimeUpgrade: this contract can't be upgraded");
         // upgrade system contract with provided bytecode
-        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction);
+        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction, IRuntimeUpgradeEvmHook.deployTo.selector);
         // extend list of new system contracts to let it be a system smart contract
         _deployedSystemContracts.push(systemContractAddress);
     }
@@ -85,10 +86,11 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     function _upgradeSystemSmartContract(
         address systemContractAddress,
         bytes calldata newByteCode,
-        bytes calldata applyFunction
+        bytes calldata applyFunction,
+        bytes4 deploySelector
     ) internal {
         // modify bytecode using EVM hook
-        bytes memory inputData = abi.encodeWithSelector(IRuntimeUpgradeEvmHook.upgradeTo.selector, systemContractAddress, newByteCode);
+        bytes memory inputData = abi.encodeWithSelector(deploySelector, systemContractAddress, newByteCode);
         (bool result,) = address(_evmHookAddress).call(inputData);
         require(result, "RuntimeUpgrade: failed to invoke EVM hook");
         // if this is new smart contract then run "init" function

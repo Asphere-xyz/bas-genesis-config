@@ -139,8 +139,6 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         // calculate shares and make sure user have enough balance
         uint256 shares = amount * _calcRatio(validatorPool) / 1e18;
         require(shares <= _stakerShares[validator][msg.sender], "StakingPool: not enough shares");
-        // undelegate
-        _stakingContract.undelegate(validator, amount);
         // save new undelegate
         IChainConfig chainConfig = IInjector(address(_stakingContract)).getChainConfig();
         _pendingUnstakes[validator][msg.sender] = PendingUnstake({
@@ -150,6 +148,8 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         });
         validatorPool.pendingUnstake += amount;
         _validatorPools[validator] = validatorPool;
+        // undelegate
+        _stakingContract.undelegate(validator, amount);
         // emit event
         emit Unstake(validator, msg.sender, amount);
     }
@@ -182,6 +182,6 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
     }
 
     receive() external payable {
-        require(address(msg.sender) == address(_stakingContract));
+        require(address(msg.sender) == address(_stakingContract), "StakingPool: not a staking contract");
     }
 }

@@ -35,7 +35,7 @@ const ALL_ADDRESSES = [
   STAKING_POOL_ADDRESS,
   GOVERNANCE_ADDRESS,
   CHAIN_CONFIG_ADDRESS,
-  RUNTIME_UPGRADE_ADDRESS,
+  // RUNTIME_UPGRADE_ADDRESS (runtime upgrade can't be upgraded)
   DEPLOYER_PROXY_ADDRESS,
 ];
 
@@ -64,6 +64,22 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
 
 (async () => {
   const web3 = new Web3('https://rpc.dev-02.bas.ankr.com/');
+  const signTx = async (account, {to, data, value}) => {
+    const nonce = await web3.eth.getTransactionCount(account.address),
+      chainId = await web3.eth.getChainId()
+    const txOpts = {
+      from: account.address,
+      gas: 2_000_000,
+      gasPrice: 5e9,
+      nonce: nonce,
+      to: to,
+      data: data,
+      chainId: chainId,
+      value,
+    }
+    await web3.eth.call(txOpts)
+    return account.signTransaction(txOpts)
+  }
   const staking = new web3.eth.Contract(ABI_STAKING, STAKING_ADDRESS);
   const governance = new web3.eth.Contract(ABI_GOVERNANCE, GOVERNANCE_ADDRESS);
   const runtimeUpgrade = new web3.eth.Contract(ABI_RUNTIME_UPGRADE, RUNTIME_UPGRADE_ADDRESS);
@@ -77,9 +93,34 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
     keystoreKeys[`0x${address}`.toLowerCase()] = web3.eth.accounts.decrypt(JSON.parse(fs.readFileSync(`./keystore/${filePath}`, 'utf8')), keystorePassword);
   }
   const activeValidatorSet = await staking.methods.getValidators().call();
+  let feedAll = false,
+    faucetAddress = null;
+  const feedValidator = async (validatorAddress) => {
+    if (!faucetAddress) faucetAddress = await askFor(`What's faucet address? `)
+    const faucetKeystore = keystoreKeys[faucetAddress.toLowerCase()]
+    if (!faucetKeystore) throw new Error(`There is no faucet address in the keystore folder`)
+    const {rawTransaction, transactionHash} = await signTx(faucetKeystore, {
+      to: validatorAddress,
+      value: '1000000000000000000' // 1 ether
+    });
+    console.log(` ~ feeding validator (${validatorAddress}): ${transactionHash}`);
+    await web3.eth.sendSignedTransaction(rawTransaction);
+  }
   for (const validatorAddress of activeValidatorSet) {
     if (!keystoreKeys[validatorAddress.toLowerCase()]) {
       throw new Error(`Unable to find private key in keystore for address: ${validatorAddress}`)
+    }
+    const balance = await web3.eth.getBalance(validatorAddress)
+    if (balance === '0') {
+      if (feedAll) {
+        await feedValidator(validatorAddress);
+        continue;
+      }
+      const answer = await askFor(`Validator (${validatorAddress}) has lack of funds, would you like to feed it from faucet? (yes/no/all) `)
+      if (answer === 'yes' || answer === 'all') {
+        await feedValidator(validatorAddress);
+        feedAll = answer === 'all';
+      }
     }
   }
   const someValidator = keystoreKeys[activeValidatorSet[0].toLowerCase()]
@@ -95,22 +136,7 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
     }
     const desc = `Runtime upgrade for the smart contract (${new Date().getTime()})`;
     const upgradeCall = runtimeUpgrade.methods.upgradeSystemSmartContract(contractAddress, byteCode, '0x').encodeABI(),
-      governanceCall = governance.methods.propose([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], desc).encodeABI()
-    const signTx = async (account, {to, data}) => {
-      const nonce = await web3.eth.getTransactionCount(account.address),
-        chainId = await web3.eth.getChainId()
-      const txOpts = {
-        from: account.address,
-        gas: 2_000_000,
-        gasPrice: 5e9,
-        nonce: nonce,
-        to: to,
-        data: data,
-        chainId: chainId,
-      }
-      await web3.eth.call(txOpts)
-      return account.signTransaction(txOpts)
-    }
+      governanceCall = governance.methods.proposeWithCustomVotingPeriod([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], desc, '20').encodeABI()
     const {rawTransaction, transactionHash} = await signTx(someValidator, {
       to: GOVERNANCE_ADDRESS,
       data: governanceCall,
@@ -178,7 +204,7 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
     }
   }
   // create new runtime upgrade proposal
-  const contractAddress = await askFor('What address you\'d like to upgrade? ')
+  const contractAddress = await askFor('What address you\'d like to upgrade? (use "auto" for auto mode) ')
   if (contractAddress === 'auto') {
     for (const address of ALL_ADDRESSES) {
       console.log(`Upgrading smart contract: ${address}`);
