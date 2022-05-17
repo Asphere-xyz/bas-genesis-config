@@ -192,7 +192,10 @@ type consensusParams struct {
 }
 
 type genesisConfig struct {
-	ChainId         int64                     `json:"chainId"`
+	ChainId  int64 `json:"chainId"`
+	Features struct {
+		RuntimeUpgradeBlock *math.HexOrDecimal256 `json:"runtimeUpgradeBlock"`
+	} `json:"features"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
 	SystemTreasury  map[common.Address]uint16 `json:"systemTreasury"`
@@ -223,7 +226,7 @@ func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, ra
 }
 
 func createGenesisConfig(config genesisConfig, targetFile string) error {
-	genesis := defaultGenesisConfig(config.ChainId)
+	genesis := defaultGenesisConfig(config)
 	// extra data
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
@@ -308,9 +311,9 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	return ioutil.WriteFile(targetFile, newJson, fs.ModePerm)
 }
 
-func defaultGenesisConfig(chainId int64) *core.Genesis {
+func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 	chainConfig := &params.ChainConfig{
-		ChainID:             big.NewInt(chainId),
+		ChainID:             big.NewInt(config.ChainId),
 		HomesteadBlock:      big.NewInt(0),
 		EIP150Block:         big.NewInt(0),
 		EIP155Block:         big.NewInt(0),
@@ -324,11 +327,14 @@ func defaultGenesisConfig(chainId int64) *core.Genesis {
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
-		RuntimeUpgradeBlock: big.NewInt(0),
 		Parlia: &params.ParliaConfig{
 			Period: 3,
 			// epoch length is managed by consensus params
 		},
+	}
+	// by default runtime upgrades are disabled
+	if config.Features.RuntimeUpgradeBlock != nil {
+		chainConfig.RuntimeUpgradeBlock = (*big.Int)(config.Features.RuntimeUpgradeBlock)
 	}
 	return &core.Genesis{
 		Config:     chainConfig,
