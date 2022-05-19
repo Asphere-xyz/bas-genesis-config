@@ -80,6 +80,8 @@ interface IStaking is IValidatorSet {
 
     function calcAvailableForRedelegateAmount(address validator, address delegator) external view returns (uint256 amountToStake, uint256 rewardsDust);
 
+    function claimPendingUndelegates(address validator) external;
+
     function redelegateDelegatorFee(address validator) external;
 
     function claimDelegatorFeeAtEpoch(address validator, uint64 beforeEpoch) external;

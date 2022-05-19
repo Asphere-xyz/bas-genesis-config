@@ -57,9 +57,9 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
 
     function getValidatorPool(address validator) external view returns (ValidatorPool memory) {
         ValidatorPool memory validatorPool = _getValidatorPool(validator);
-        (uint256 stakedAmount, uint256 dustRewards) = _calcUnclaimedDelegatorFee(validatorPool);
-        validatorPool.totalStakedAmount += stakedAmount;
-        validatorPool.dustRewards = dustRewards;
+        (uint256 amountToStake, uint256 dustRewards) = _calcUnclaimedDelegatorFee(validatorPool);
+        validatorPool.totalStakedAmount += amountToStake;
+        validatorPool.dustRewards += dustRewards;
         return validatorPool;
     }
 
@@ -72,17 +72,16 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         {
             ValidatorPool memory validatorPool = _getValidatorPool(validator);
             // claim rewards from staking contract
-            (uint256 stakedAmount, uint256 dustRewards) = _calcUnclaimedDelegatorFee(validatorPool);
-            _stakingContract.claimDelegatorFee(validator);
-            // re-delegate just arrived rewards
-            if (stakedAmount > 0) {
-                _stakingContract.delegate{value : stakedAmount}(validator);
-            }
+            (uint256 amountToStake, uint256 dustRewards) = _calcUnclaimedDelegatorFee(validatorPool);
             // increase total accumulated rewards
-            validatorPool.totalStakedAmount += stakedAmount;
-            validatorPool.dustRewards = dustRewards;
+            validatorPool.totalStakedAmount += amountToStake;
+            validatorPool.dustRewards += dustRewards;
             // save validator pool changes
             _validatorPools[validator] = validatorPool;
+            // if we have something to redelegate then do this right now
+            if (amountToStake > 0) {
+                _stakingContract.redelegateDelegatorFee(validatorPool.validatorAddress);
+            }
         }
         _;
     }
@@ -93,17 +92,8 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         return validatorPool;
     }
 
-    function _calcUnclaimedDelegatorFee(ValidatorPool memory validatorPool) internal view returns (uint256 stakedAmount, uint256 dustRewards) {
-        uint256 unclaimedRewards = _stakingContract.getDelegatorFee(validatorPool.validatorAddress, address(this));
-        // adjust values based on total dust and pending unstakes
-        unclaimedRewards += validatorPool.dustRewards;
-        unclaimedRewards -= validatorPool.pendingUnstake;
-        // split balance into stake and dust
-        stakedAmount = (unclaimedRewards / BALANCE_COMPACT_PRECISION) * BALANCE_COMPACT_PRECISION;
-        if (stakedAmount < _chainConfigContract.getMinStakingAmount()) {
-            return (0, unclaimedRewards);
-        }
-        return (stakedAmount, unclaimedRewards - stakedAmount);
+    function _calcUnclaimedDelegatorFee(ValidatorPool memory validatorPool) internal view returns (uint256 amountToStake, uint256 dustRewards) {
+        return _stakingContract.calcAvailableForRedelegateAmount(validatorPool.validatorAddress, address(this));
     }
 
     function _calcRatio(ValidatorPool memory validatorPool) internal view returns (uint256) {
@@ -112,6 +102,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         if (stakeWithRewards == 0) {
             return 1e18;
         }
+        // we're doing upper rounding here
         return (validatorPool.sharesSupply * 1e18 + stakeWithRewards - 1) / stakeWithRewards;
     }
 
@@ -162,6 +153,8 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         PendingUnstake memory pendingUnstake = _pendingUnstakes[validator][msg.sender];
         uint256 amount = pendingUnstake.amount;
         uint256 shares = pendingUnstake.shares;
+        // claim undelegate rewards
+        _stakingContract.claimPendingUndelegates(validator);
         // make sure user have pending unstake
         require(pendingUnstake.epoch > 0, "StakingPool: nothing to claim");
         require(pendingUnstake.epoch <= _stakingContract.currentEpoch(), "StakingPool: not ready");
