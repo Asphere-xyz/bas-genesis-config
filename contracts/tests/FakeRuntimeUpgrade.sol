@@ -5,7 +5,25 @@ import "../RuntimeUpgrade.sol";
 
 contract FakeRuntimeUpgrade is RuntimeUpgrade {
 
-    constructor(bytes memory constructorParams) RuntimeUpgrade(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) RuntimeUpgrade(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
     function upgradeSystemSmartContract(

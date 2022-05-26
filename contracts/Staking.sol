@@ -116,10 +116,28 @@ contract Staking is IStaking, InjectorContextHolder {
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
 
-    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) InjectorContextHolder(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function ctor(address[] calldata validators, uint256[] calldata initialStakes, uint16 commissionRate) external whenNotInitialized {
+    function initialize(address[] calldata validators, uint256[] calldata initialStakes, uint16 commissionRate) external initializer {
         require(initialStakes.length == validators.length);
         uint256 totalStakes = 0;
         for (uint256 i = 0; i < validators.length; i++) {
@@ -234,7 +252,7 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _currentEpoch() internal view returns (uint64) {
-        return uint64(block.number / _chainConfigContract.getEpochBlockInterval() + 0);
+        return uint64(block.number / _CHAIN_CONFIG_CONTRACT.getEpochBlockInterval() + 0);
     }
 
     function _nextEpoch() internal view returns (uint64) {
@@ -277,7 +295,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // check is minimum delegate amount
-        require(amount >= _chainConfigContract.getMinStakingAmount() && amount != 0, "Staking: amount is too low");
+        require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "Staking: amount is too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure amount is greater than min staking amount
         // make sure validator exists at least
@@ -314,7 +332,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
         // check minimum delegate amount
-        require(amount >= _chainConfigContract.getMinStakingAmount() && amount != 0, "Staking: amount is too low");
+        require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "Staking: amount is too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
@@ -343,7 +361,7 @@ contract Staking is IStaking, InjectorContextHolder {
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : beforeEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint112(amount / BALANCE_COMPACT_PRECISION), epoch : beforeEpoch + _chainConfigContract.getUndelegatePeriod()}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint112(amount / BALANCE_COMPACT_PRECISION), epoch : beforeEpoch + _CHAIN_CONFIG_CONTRACT.getUndelegatePeriod()}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, beforeEpoch);
     }
@@ -483,7 +501,7 @@ contract Staking is IStaking, InjectorContextHolder {
         _safeTransferWithGasLimit(payable(validator.ownerAddress), availableFunds);
         // if we have system fee then pay it to treasury account
         if (systemFee > 0) {
-            _unsafeTransfer(payable(address(_systemRewardContract)), systemFee);
+            _unsafeTransfer(payable(address(_SYSTEM_REWARD_CONTRACT)), systemFee);
         }
         emit ValidatorOwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
     }
@@ -500,7 +518,7 @@ contract Staking is IStaking, InjectorContextHolder {
 
     function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal view returns (uint256 delegatorFee, uint256 ownerFee, uint256 systemFee) {
         // detect validator slashing to transfer all rewards to treasury
-        if (validatorSnapshot.slashesCount >= _chainConfigContract.getMisdemeanorThreshold()) {
+        if (validatorSnapshot.slashesCount >= _CHAIN_CONFIG_CONTRACT.getMisdemeanorThreshold()) {
             return (delegatorFee = 0, ownerFee = 0, systemFee = validatorSnapshot.totalRewards);
         } else if (validatorSnapshot.totalDelegated == 0) {
             return (delegatorFee = 0, ownerFee = validatorSnapshot.totalRewards, systemFee = 0);
@@ -516,7 +534,7 @@ contract Staking is IStaking, InjectorContextHolder {
     function registerValidator(address validatorAddress, uint16 commissionRate) payable external override {
         uint256 initialStake = msg.value;
         // // initial stake amount should be greater than minimum validator staking amount
-        require(initialStake >= _chainConfigContract.getMinValidatorStakeAmount(), "Staking: initial stake is too low");
+        require(initialStake >= _CHAIN_CONFIG_CONTRACT.getMinValidatorStakeAmount(), "Staking: initial stake is too low");
         require(initialStake % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // add new validator as pending
         _addValidator(validatorAddress, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, _nextEpoch());
@@ -660,7 +678,7 @@ contract Staking is IStaking, InjectorContextHolder {
             orderedValidators[i] = _activeValidatorsList[i];
         }
         // we need to select k top validators out of n
-        uint256 k = _chainConfigContract.getActiveValidatorsLength();
+        uint256 k = _CHAIN_CONFIG_CONTRACT.getActiveValidatorsLength();
         if (k > n) {
             k = n;
         }
@@ -767,7 +785,7 @@ contract Staking is IStaking, InjectorContextHolder {
     function _calcAvailableForRedelegateAmount(uint256 claimableRewards) internal view returns (uint256 amountToStake, uint256 rewardsDust) {
         // for redelegate we must split amount into stake-able and dust
         amountToStake = (claimableRewards / BALANCE_COMPACT_PRECISION) * BALANCE_COMPACT_PRECISION;
-        if (amountToStake < _chainConfigContract.getMinStakingAmount()) {
+        if (amountToStake < _CHAIN_CONFIG_CONTRACT.getMinStakingAmount()) {
             return (0, claimableRewards);
         }
         // if we have dust remaining after re-stake then send it to user (we can't keep it in the contract)
@@ -817,8 +835,8 @@ contract Staking is IStaking, InjectorContextHolder {
         // validator state might change, lets update it
         _validatorsMap[validatorAddress] = validator;
         // if validator has a lot of misses then put it in jail for 1 week (if epoch is 1 day)
-        if (slashesCount == _chainConfigContract.getFelonyThreshold()) {
-            validator.jailedBefore = _currentEpoch() + _chainConfigContract.getValidatorJailEpochLength();
+        if (slashesCount == _CHAIN_CONFIG_CONTRACT.getFelonyThreshold()) {
+            validator.jailedBefore = _currentEpoch() + _CHAIN_CONFIG_CONTRACT.getValidatorJailEpochLength();
             validator.status = ValidatorStatus.Jail;
             _removeValidatorFromActiveList(validatorAddress);
             _validatorsMap[validatorAddress] = validator;

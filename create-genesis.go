@@ -98,7 +98,7 @@ func simulateSystemContract(genesis *core.Genesis, systemContract common.Address
 		Debug:  true,
 		Tracer: tracer,
 	})
-	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
+	deployedBytecode, _, err := evm.CreateWithAddress(common.Address{}, bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
 		for _, c := range deployedBytecode[64:] {
 			if c >= 32 && c <= unicode.MaxASCII {

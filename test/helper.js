@@ -1,7 +1,8 @@
 /** @var web3 {Web3} */
 const BigNumber = require("bignumber.js");
-const {keccak256} = require('ethereumjs-util');
+const {keccak256, toChecksumAddress} = require('ethereumjs-util');
 const AbiCoder = require('web3-eth-abi');
+const RLP = require('rlp');
 
 const ChainConfig = artifacts.require("ChainConfig");
 const Staking = artifacts.require("Staking");
@@ -75,37 +76,35 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     runtimeUpgradeEvmHook,
     votingPeriod,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
-  // factory contracts
-  const staking = await Staking.new(createConstructorArgs(
-    ['address[]', 'uint256[]', 'uint16'],
-    [genesisValidators, genesisValidators.map(() => '0'), '0'])
-  );
-  const slashingIndicator = await SlashingIndicator.new(createConstructorArgs([], []));
+  // convert single param to the object
   if (typeof systemTreasury === 'string') {
     systemTreasury = {[systemTreasury]: '10000'}
   }
-  const systemReward = await SystemReward.new(createConstructorArgs(['address[]', 'uint16[]'], [Object.keys(systemTreasury), Object.values(systemTreasury)]));
-  const governance = await Governance.new(createConstructorArgs(['uint256'], [votingPeriod]));
-  const chainConfig = await ChainConfig.new(createConstructorArgs(
-    ["uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"],
-    [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount])
-  );
-  const stakingPool = await StakingPool.new(createConstructorArgs([], []));
-  const runtimeUpgrade = await RuntimeUpgrade.new(createConstructorArgs(['address'], [runtimeUpgradeEvmHook]));
-  const deployerProxy = await DeployerProxy.new(createConstructorArgs(['address[]'], [genesisDeployers]));
-  // init them all
-  for (const contract of [slashingIndicator, staking, systemReward, stakingPool, governance, chainConfig, runtimeUpgrade, deployerProxy]) {
-    await contract.initManually(
-      staking.address,
-      slashingIndicator.address,
-      systemReward.address,
-      stakingPool.address,
-      governance.address,
-      chainConfig.address,
-      runtimeUpgrade.address,
-      deployerProxy.address,
-    );
+  // precompute system contract addresses
+  const latestNonce = await web3.eth.getTransactionCount(owner)
+  const systemAddresses = []
+  for (let i = 0; i < 8; i++) {
+    const nonceHash = keccak256(RLP.encode([owner, latestNonce + i])).toString('hex');
+    systemAddresses.push(toChecksumAddress(`0x${nonceHash.substring(24)}`));
   }
+  // factory system contracts (order is important)
+  const staking = await Staking.new(...systemAddresses);
+  const slashingIndicator = await SlashingIndicator.new(...systemAddresses);
+  const systemReward = await SystemReward.new(...systemAddresses);
+  const stakingPool = await StakingPool.new(...systemAddresses);
+  const governance = await Governance.new(...systemAddresses);
+  const chainConfig = await ChainConfig.new(...systemAddresses);
+  const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses);
+  const deployerProxy = await DeployerProxy.new(...systemAddresses);
+  // initialize system contracts
+  await staking.initialize(genesisValidators, genesisValidators.map(() => '0'), '0');
+  await slashingIndicator.initialize();
+  await systemReward.initialize(Object.keys(systemTreasury), Object.values(systemTreasury));
+  await stakingPool.initialize();
+  await governance.initialize(votingPeriod, "Governance");
+  await chainConfig.initialize(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount);
+  await runtimeUpgrade.initialize(runtimeUpgradeEvmHook);
+  await deployerProxy.initialize(genesisDeployers);
   return {
     staking,
     parlia: staking,

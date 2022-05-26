@@ -12,10 +12,28 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     // list of new deployed system smart contracts
     address[] internal _deployedSystemContracts;
 
-    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) InjectorContextHolder(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function ctor(address evmHookAddress) external whenNotInitialized {
+    function initialize(address evmHookAddress) external initializer {
         _evmHookAddress = evmHookAddress;
     }
 
@@ -41,7 +59,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     ) external onlyFromGovernance virtual override {
         // disallow to upgrade plain contracts or system contracts (only new)
         require(!_isContract(systemContractAddress) && !_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only new address");
-        require(systemContractAddress != address(_runtimeUpgradeContract), "RuntimeUpgrade: this contract can't be upgraded");
+        require(systemContractAddress != address(_RUNTIME_UPGRADE_CONTRACT), "RuntimeUpgrade: this contract can't be upgraded");
         // upgrade system contract with provided bytecode
         _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction, IRuntimeUpgradeEvmHook.deployTo.selector);
         // extend list of new system contracts to let it be a system smart contract
@@ -51,15 +69,15 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     function getSystemContracts() public view override returns (address[] memory) {
         address[] memory result = new address[](8 + _deployedSystemContracts.length);
         // BSC-compatible
-        result[0] = address(_stakingContract);
-        result[1] = address(_slashingIndicatorContract);
-        result[2] = address(_systemRewardContract);
+        result[0] = address(_STAKING_CONTRACT);
+        result[1] = address(_SLASHING_INDICATOR_CONTRACT);
+        result[2] = address(_SYSTEM_REWARD_CONTRACT);
         // BAS-defined
-        result[3] = address(_stakingPoolContract);
-        result[4] = address(_governanceContract);
-        result[5] = address(_chainConfigContract);
-        result[6] = address(_runtimeUpgradeContract);
-        result[7] = address(_deployerProxyContract);
+        result[3] = address(_STAKING_POOL_CONTRACT);
+        result[4] = address(_GOVERNANCE_CONTRACT);
+        result[5] = address(_CHAIN_CONFIG_CONTRACT);
+        result[6] = address(_RUNTIME_UPGRADE_CONTRACT);
+        result[7] = address(_DEPLOYER_PROXY_CONTRACT);
         // copy deployed system smart contracts
         for (uint256 i = 0; i < _deployedSystemContracts.length; i++) {
             result[8 + i] = _deployedSystemContracts[i];
@@ -94,10 +112,10 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         (bool result,) = address(_evmHookAddress).call(inputData);
         require(result, "RuntimeUpgrade: failed to invoke EVM hook");
         // if this is new smart contract then run "init" function
-        IInjector injector = IInjector(systemContractAddress);
-        if (!injector.isInitialized()) {
-            injector.init();
-        }
+//        IInjector injector = IInjector(systemContractAddress);
+//        if (!injector.isInitialized()) {
+//            injector.init();
+//        }
         // call migration function if specified
         if (applyFunction.length > 0) {
             (bool result2,) = systemContractAddress.call(applyFunction);

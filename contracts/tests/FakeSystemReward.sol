@@ -5,10 +5,44 @@ import "../SystemReward.sol";
 
 contract FakeSystemReward is SystemReward {
 
-    constructor(bytes memory constructorParams) SystemReward(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) SystemReward(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function updateDistributionShare(address[] calldata accounts, uint16[] calldata shares) external virtual override {
-        _updateDistributionShare(accounts, shares);
+    modifier onlyFromCoinbase() virtual override {
+        _;
+    }
+
+    modifier onlyFromSlashingIndicator() virtual override {
+        _;
+    }
+
+    modifier onlyFromGovernance() virtual override {
+        _;
+    }
+
+    modifier onlyFromRuntimeUpgrade() virtual override {
+        _;
+    }
+
+    modifier onlyZeroGasPrice() virtual override {
+        _;
     }
 }

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "./Injector.sol";
+import "../Injector.sol";
 
-contract SlashingIndicator is ISlashingIndicator, InjectorContextHolder {
+contract StorageLayoutChecker is InjectorContextHolder {
+
+    uint256 internal _slot100;
 
     constructor(
         IStaking stakingContract,
@@ -26,11 +28,11 @@ contract SlashingIndicator is ISlashingIndicator, InjectorContextHolder {
     ) {
     }
 
-    function initialize() external initializer {
-    }
-
-    function slash(address validator) external onlyFromCoinbase virtual override {
-        // we need this proxy to be compatible with BSC
-        _STAKING_CONTRACT.slash(validator);
+    function makeSureInjectorLayoutIsNotCorrupted() external pure {
+        bytes32 slot;
+        assembly {
+            slot := _slot100.slot
+        }
+        require(slot == bytes32(uint256(_LAYOUT_OFFSET)), "SlotLayoutChecker: layout is corrupted");
     }
 }

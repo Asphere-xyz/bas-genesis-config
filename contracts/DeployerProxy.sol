@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "./Injector.sol";
 
-contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
+contract DeployerProxy is InjectorContextHolder, IDeployerProxy {
 
     event DeployerAdded(address indexed account);
     event DeployerRemoved(address indexed account);
@@ -35,10 +35,28 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
     mapping(address => Deployer) private _contractDeployers;
     mapping(address => SmartContract) private _smartContracts;
 
-    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) InjectorContextHolder(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function ctor(address[] memory deployers) external whenNotInitialized {
+    function initialize(address[] memory deployers) external initializer {
         for (uint256 i = 0; i < deployers.length; i++) {
             _addDeployer(deployers[i]);
         }

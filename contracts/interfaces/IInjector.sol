@@ -11,10 +11,6 @@ import "./IChainConfig.sol";
 
 interface IInjector {
 
-    function init() external;
-
-    function isInitialized() external view returns (bool);
-
     function getStaking() external view returns (IStaking);
 
     function getSlashingIndicator() external view returns (ISlashingIndicator);

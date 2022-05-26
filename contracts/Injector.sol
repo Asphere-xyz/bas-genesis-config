@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
 import "./interfaces/IChainConfig.sol";
 import "./interfaces/IGovernance.sol";
 import "./interfaces/ISlashingIndicator.sol";
@@ -13,68 +15,28 @@ import "./interfaces/IStakingPool.sol";
 import "./interfaces/IInjector.sol";
 import "./interfaces/IDeployerProxy.sol";
 
-abstract contract AlreadyInit {
+abstract contract InjectorContextHolder is Initializable, IInjector {
 
-    // flag indicating is smart contract initialized already
-    bool internal _init;
+    // default layout offset, it means that all inherited smart contract's storage layout must start from 100
+    uint256 internal constant _LAYOUT_OFFSET = 100;
+    uint256 internal constant _SKIP_OFFSET = 10;
 
-    modifier initializer() {
-        require(!_init, "Injector: already initialized");
-        _;
-        _init = true;
-    }
+    // BSC compatible smart contracts
+    IStaking internal immutable _STAKING_CONTRACT;
+    ISlashingIndicator internal immutable _SLASHING_INDICATOR_CONTRACT;
+    ISystemReward internal immutable _SYSTEM_REWARD_CONTRACT;
+    IStakingPool internal immutable _STAKING_POOL_CONTRACT;
+    IGovernance internal immutable _GOVERNANCE_CONTRACT;
+    IChainConfig internal immutable _CHAIN_CONFIG_CONTRACT;
+    IRuntimeUpgrade internal immutable _RUNTIME_UPGRADE_CONTRACT;
+    IDeployerProxy internal immutable _DEPLOYER_PROXY_CONTRACT;
 
-    modifier whenNotInitialized() {
-        require(!_init, "Injector: already initialized");
-        _;
-    }
+    // already used fields
+    uint256[_SKIP_OFFSET] private __dont_use;
+    // reserved (1 for init)
+    uint256[_LAYOUT_OFFSET-_SKIP_OFFSET-1] private __reserved;
 
-    modifier whenInitialized() {
-        require(_init, "Injector: not initialized yet");
-        _;
-    }
-}
-
-abstract contract InjectorContextHolder is AlreadyInit, IInjector {
-
-    // system smart contract constructor
-    bytes internal _ctor;
-
-    // BSC compatible contracts
-    IStaking internal _stakingContract;
-    ISlashingIndicator internal _slashingIndicatorContract;
-    ISystemReward internal _systemRewardContract;
-    // BAS defined contracts
-    IStakingPool internal _stakingPoolContract;
-    IGovernance internal _governanceContract;
-    IChainConfig internal _chainConfigContract;
-    IRuntimeUpgrade internal _runtimeUpgradeContract;
-    IDeployerProxy internal _deployerProxyContract;
-
-    // already init (1) + ctor(1) + injector (8) = 10
-    uint256[100 - 10] private __reserved;
-
-    constructor(bytes memory constructorParams) {
-        // save constructor params to use them in the init function
-        _ctor = constructorParams;
-    }
-
-    function init() external initializer {
-        // BSC compatible addresses
-        _stakingContract = IStaking(0x0000000000000000000000000000000000001000);
-        _slashingIndicatorContract = ISlashingIndicator(0x0000000000000000000000000000000000001001);
-        _systemRewardContract = ISystemReward(0x0000000000000000000000000000000000001002);
-        // BAS defined addresses
-        _stakingPoolContract = IStakingPool(0x0000000000000000000000000000000000007001);
-        _governanceContract = IGovernance(0x0000000000000000000000000000000000007002);
-        _chainConfigContract = IChainConfig(0x0000000000000000000000000000000000007003);
-        _runtimeUpgradeContract = IRuntimeUpgrade(0x0000000000000000000000000000000000007004);
-        _deployerProxyContract = IDeployerProxy(0x0000000000000000000000000000000000007005);
-        // invoke constructor
-        _invokeContractConstructor();
-    }
-
-    function initManually(
+    constructor(
         IStaking stakingContract,
         ISlashingIndicator slashingIndicatorContract,
         ISystemReward systemRewardContract,
@@ -83,89 +45,67 @@ abstract contract InjectorContextHolder is AlreadyInit, IInjector {
         IChainConfig chainConfigContract,
         IRuntimeUpgrade runtimeUpgradeContract,
         IDeployerProxy deployerProxyContract
-    ) public initializer {
-        // BSC-compatible
-        _stakingContract = stakingContract;
-        _slashingIndicatorContract = slashingIndicatorContract;
-        _systemRewardContract = systemRewardContract;
-        // BAS-defined
-        _stakingPoolContract = stakingPoolContract;
-        _governanceContract = governanceContract;
-        _chainConfigContract = chainConfigContract;
-        _runtimeUpgradeContract = runtimeUpgradeContract;
-        _deployerProxyContract = deployerProxyContract;
-        // invoke constructor
-        _invokeContractConstructor();
+    ) {
+        _STAKING_CONTRACT = stakingContract;
+        _SLASHING_INDICATOR_CONTRACT = slashingIndicatorContract;
+        _SYSTEM_REWARD_CONTRACT = systemRewardContract;
+        _STAKING_POOL_CONTRACT = stakingPoolContract;
+        _GOVERNANCE_CONTRACT = governanceContract;
+        _CHAIN_CONFIG_CONTRACT = chainConfigContract;
+        _RUNTIME_UPGRADE_CONTRACT = runtimeUpgradeContract;
+        _DEPLOYER_PROXY_CONTRACT = deployerProxyContract;
     }
 
-    function _invokeContractConstructor() internal {
-        if (_ctor.length == 0) {
-            return;
-        }
-        (bool success, bytes memory returnData) = address(this).call(_ctor);
-        // if everything is success then just exit w/o revert
-        if (success) {
-            return;
-        }
-        if (returnData.length == 0) {
-            revert("Injector: construction failed w/ unknown error");
-        }
-        assembly {
-            let returnDataSize := mload(returnData)
-            revert(add(32, returnData), returnDataSize)
-        }
+    function init() external {
+        // we keep this function only for backward compatibility with parlia consensus engine
     }
 
-    function isInitialized() external view returns (bool) {
-        return _init;
-    }
-
-    modifier onlyFromCoinbase() {
+    modifier onlyFromCoinbase() virtual {
         require(msg.sender == block.coinbase, "InjectorContextHolder: only coinbase");
         _;
     }
 
-    modifier onlyFromSlashingIndicator() {
-        require(msg.sender == address(_slashingIndicatorContract), "InjectorContextHolder: only slashing indicator");
+    modifier onlyFromSlashingIndicator() virtual {
+        require(msg.sender == address(_SLASHING_INDICATOR_CONTRACT), "InjectorContextHolder: only slashing indicator");
         _;
     }
 
-    modifier onlyFromGovernance() {
-        require(IGovernance(msg.sender) == _governanceContract, "InjectorContextHolder: only governance");
+    modifier onlyFromGovernance() virtual {
+        require(IGovernance(msg.sender) == _GOVERNANCE_CONTRACT, "InjectorContextHolder: only governance");
         _;
     }
 
-    modifier onlyFromRuntimeUpgrade() {
-        require(IRuntimeUpgrade(msg.sender) == _runtimeUpgradeContract, "InjectorContextHolder: only runtime upgrade");
+    modifier onlyFromRuntimeUpgrade() virtual {
+        require(IRuntimeUpgrade(msg.sender) == _RUNTIME_UPGRADE_CONTRACT, "InjectorContextHolder: only runtime upgrade");
         _;
     }
 
-    modifier onlyZeroGasPrice() {
+    modifier onlyZeroGasPrice() virtual {
         require(tx.gasprice == 0, "InjectorContextHolder: only zero gas price");
         _;
     }
 
     function getStaking() public view returns (IStaking) {
-        return _stakingContract;
+        return _STAKING_CONTRACT;
     }
 
     function getSlashingIndicator() public view returns (ISlashingIndicator) {
-        return _slashingIndicatorContract;
+        return _SLASHING_INDICATOR_CONTRACT;
     }
 
     function getSystemReward() public view returns (ISystemReward) {
-        return _systemRewardContract;
+        return _SYSTEM_REWARD_CONTRACT;
     }
 
     function getStakingPool() public view returns (IStakingPool) {
-        return _stakingPoolContract;
+        return _STAKING_POOL_CONTRACT;
     }
 
     function getGovernance() public view returns (IGovernance) {
-        return _governanceContract;
+        return _GOVERNANCE_CONTRACT;
     }
 
     function getChainConfig() public view returns (IChainConfig) {
-        return _chainConfigContract;
+        return _CHAIN_CONFIG_CONTRACT;
     }
 }
