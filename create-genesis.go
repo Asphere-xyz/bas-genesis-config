@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/common/systemcontract"
-	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/crypto"
 	"io/fs"
 	"io/ioutil"
 	"math/big"
@@ -17,8 +17,6 @@ import (
 	"unsafe"
 
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
-
-	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -69,69 +67,6 @@ func readDirtyStorageFromState(f *state.StateObject) state.Storage {
 	ri := reflect.ValueOf(&result).Elem()
 	ri.Set(rf)
 	return result
-}
-
-func simulateSystemContract(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, constructor []byte, balance *big.Int) error {
-	artifact := &artifactData{}
-	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
-		return err
-	}
-	bytecode := append(hexutil.MustDecode(artifact.Bytecode), constructor...)
-	// simulate constructor execution
-	ethdb := rawdb.NewDatabase(memorydb.New())
-	db := state.NewDatabaseWithConfig(ethdb, &trie.Config{})
-	statedb, err := state.New(common.Hash{}, db, nil)
-	if err != nil {
-		return err
-	}
-	statedb.SetBalance(systemContract, balance)
-	block := genesis.ToBlock(nil)
-	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
-	txContext := core.NewEVMTxContext(
-		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
-	)
-	tracer, err := tracers.New("callTracer", nil)
-	if err != nil {
-		return err
-	}
-	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{
-		Debug:  true,
-		Tracer: tracer,
-	})
-	deployedBytecode, _, err := evm.CreateWithAddress(common.Address{}, bytecode, 10_000_000, big.NewInt(0), systemContract)
-	if err != nil {
-		for _, c := range deployedBytecode[64:] {
-			if c >= 32 && c <= unicode.MaxASCII {
-				print(string(c))
-			}
-		}
-		println()
-		return err
-	}
-	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(systemContract))
-	// read state changes from state database
-	genesisAccount := core.GenesisAccount{
-		Code:    deployedBytecode,
-		Storage: storage.Copy(),
-		Balance: big.NewInt(0),
-		Nonce:   0,
-	}
-	if genesis.Alloc == nil {
-		genesis.Alloc = make(core.GenesisAlloc)
-	}
-	genesis.Alloc[systemContract] = genesisAccount
-	// make sure ctor working fine (better to fail here instead of in consensus engine)
-	errorCode, _, err := evm.Call(vm.AccountRef(common.Address{}), systemContract, hexutil.MustDecode("0xe1c7392a"), 10_000_000, big.NewInt(0))
-	if err != nil {
-		for _, c := range errorCode[64:] {
-			if c >= 32 && c <= unicode.MaxASCII {
-				print(string(c))
-			}
-		}
-		println()
-		return err
-	}
-	return nil
 }
 
 var stakingAddress = common.HexToAddress("0x0000000000000000000000000000000000001000")
@@ -206,23 +141,68 @@ type genesisConfig struct {
 	InitialStakes   map[common.Address]string `json:"initialStakes"`
 }
 
-func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool, balance *big.Int) {
-	ctor, err := newArguments(typeNames...).Pack(params...)
+func traceCallError(deployedBytecode []byte) {
+	for _, c := range deployedBytecode[64:] {
+		if c >= 32 && c <= unicode.MaxASCII {
+			print(string(c))
+		}
+	}
+	println()
+}
+
+func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool, balance *big.Int) {
+	constructorArgs, err := newArguments(
+		"address", "address", "address", "address", "address", "address", "address", "address").Pack(
+		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress)
 	if err != nil {
 		panic(err)
 	}
-	sig := crypto.Keccak256([]byte(fmt.Sprintf("ctor(%s)", strings.Join(typeNames, ","))))[:4]
-	ctor = append(sig, ctor...)
-	ctor, err = newArguments("bytes").Pack(ctor)
+	artifact := &artifactData{}
+	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
+		panic(err)
+	}
+	bytecode := append(hexutil.MustDecode(artifact.Bytecode), constructorArgs...)
+	// simulate constructor execution
+	statedb, _ := state.New(common.Hash{}, state.NewDatabaseWithConfig(rawdb.NewDatabase(memorydb.New()), &trie.Config{}), nil)
+	statedb.SetBalance(systemContract, balance)
+	block := genesis.ToBlock(nil)
+	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
+	txContext := core.NewEVMTxContext(
+		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
+	)
+	virtualMachine := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
+	deployedBytecode, _, err := virtualMachine.CreateWithAddress(common.Address{}, bytecode, 10_000_000, big.NewInt(0), systemContract)
+	if err != nil {
+		traceCallError(deployedBytecode)
+		panic(err)
+	}
+	// invoke initializer
+	initializerArgs, err := newArguments(typeNames...).Pack(params...)
 	if err != nil {
 		panic(err)
 	}
+	initializerSig := crypto.Keccak256([]byte(fmt.Sprintf("initialize(%s)", strings.Join(typeNames, ","))))[:4]
+	initializerSig = append(initializerSig, initializerArgs...)
 	if !silent {
-		fmt.Printf(" + calling constructor: address=%s sig=%s ctor=%s\n", contract.Hex(), hexutil.Encode(sig), hexutil.Encode(ctor))
+		fmt.Printf(" + calling initializer: address=%s sig=%s\n", systemContract.Hex(), hexutil.Encode(initializerSig))
 	}
-	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor, balance); err != nil {
+	errorCode, _, err := virtualMachine.Call(vm.AccountRef(common.Address{}), systemContract, initializerSig, 10_000_000, big.NewInt(0))
+	if err != nil {
+		traceCallError(errorCode)
 		panic(err)
 	}
+	// read state changes from state database
+	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(systemContract))
+	genesisAccount := core.GenesisAccount{
+		Code:    deployedBytecode,
+		Storage: storage.Copy(),
+		Balance: big.NewInt(0),
+		Nonce:   0,
+	}
+	if genesis.Alloc == nil {
+		genesis.Alloc = make(core.GenesisAlloc)
+	}
+	genesis.Alloc[systemContract] = genesisAccount
 }
 
 func createGenesisConfig(config genesisConfig, targetFile string) error {
@@ -272,8 +252,8 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address[]", "uint16[]"}, []interface{}{
 		treasuryAddresses, treasuryShares,
 	}, silent, nil)
-	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
-		big.NewInt(config.VotingPeriod),
+	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256", "string"}, []interface{}{
+		big.NewInt(config.VotingPeriod), "Governance",
 	}, silent, nil)
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
 		systemcontract.EvmHookRuntimeUpgradeAddress,
