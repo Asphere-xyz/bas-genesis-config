@@ -92,14 +92,14 @@ contract Governance is InjectorContextHolder, GovernorCountingSimpleUpgradeable,
 
     function _validatorOwnerVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
         address validator = _STAKING_CONTRACT.getValidatorByOwner(validatorOwner);
-        // only active validators power makes sense
-        if (!_STAKING_CONTRACT.isValidatorActive(validator)) {
-            return 0;
-        }
         return _validatorVotingPowerAt(validator, blockNumber);
     }
 
     function _validatorVotingPowerAt(address validator, uint256 blockNumber) internal view returns (uint256) {
+        // only active validators power makes sense
+        if (!_STAKING_CONTRACT.isValidatorActive(validator)) {
+            return 0;
+        }
         // find validator votes at block number
         uint64 epoch = uint64(blockNumber / _CHAIN_CONFIG_CONTRACT.getEpochBlockInterval());
         (,,uint256 totalDelegated,,,,,,) = _STAKING_CONTRACT.getValidatorStatusAtEpoch(validator, epoch);

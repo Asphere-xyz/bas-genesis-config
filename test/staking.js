@@ -513,4 +513,31 @@ contract("Staking", async (accounts) => {
     delegation = await parlia.getValidatorDelegation(validator1, staker1);
     assert.equal(delegation.delegatedAmount.toString(), '2000000000000000000')
   });
+  it("its possible to do force release for jailed validator via governance", async () => {
+    const {parlia} = await newMockContract(owner, {
+      epochBlockInterval: '50', // 50 blocks
+      misdemeanorThreshold: '10', // penalty after 10 misses
+      felonyThreshold: '5', // jail after 5 misses
+      validatorJailEpochLength: '2', // put in jail for 2 epochs (100 blocks)
+    })
+    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator2);
+    // let's wait for the next epoch (to be sure that slashing happen in one epoch)
+    await waitForNextEpoch(parlia)
+    // slash for 5 times
+    for (let i = 0; i < 5; i++) {
+      await parlia.slash(validator2, {from: validator1});
+    }
+    // now validator 2 is in jail
+    let status2 = await parlia.getValidatorStatus(validator2)
+    assert.equal(status2.slashesCount.toString(), '5');
+    assert.equal(status2.status.toString(), '3');
+    // try to release validator before jail period end
+    await expectError(parlia.releaseValidatorFromJail(validator2, {from: validator2}), 'Staking: still in jail')
+    // sleep until epoch 3 is reached
+    await parlia.forceUnJailValidator(validator2);
+    // all validators are active
+    assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
+    assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+  })
 });

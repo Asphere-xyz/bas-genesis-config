@@ -49,4 +49,8 @@ contract FakeStaking is Staking {
     function slash(address validatorAddress) external override {
         _slashValidator(validatorAddress);
     }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
 }

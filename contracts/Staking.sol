@@ -215,15 +215,30 @@ contract Staking is IStaking, InjectorContextHolder {
         return _validatorOwners[owner];
     }
 
-    function releaseValidatorFromJail(address validatorAddress) external {
+    function releaseValidatorFromJail(address validatorAddress) external override {
         // make sure validator is in jail
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Jail, "Staking: validator not in jail");
         // only validator owner
         require(msg.sender == validator.ownerAddress, "Staking: only validator owner");
         require(_currentEpoch() >= validator.jailedBefore, "Staking: still in jail");
+        // release validator from jail
+        _releaseValidatorFromJail(validator);
+    }
+
+    function forceUnJailValidator(address validatorAddress) external onlyFromGovernance {
+        // make sure validator is in jail
+        Validator memory validator = _validatorsMap[validatorAddress];
+        require(validator.status == ValidatorStatus.Jail, "Staking: validator not in jail");
+        // release validator from jail
+        _releaseValidatorFromJail(validator);
+    }
+
+    function _releaseValidatorFromJail(Validator memory validator) internal {
+        address validatorAddress = validator.validatorAddress;
         // update validator status
         validator.status = ValidatorStatus.Active;
+        validator.jailedBefore = 0;
         _validatorsMap[validatorAddress] = validator;
         _activeValidatorsList.push(validatorAddress);
         // emit event
