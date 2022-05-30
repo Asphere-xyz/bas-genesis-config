@@ -198,6 +198,7 @@ func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Addre
 		Storage: storage.Copy(),
 		Balance: big.NewInt(0),
 		Nonce:   0,
+		Logs:    core.ToJsonLogs(statedb.Logs()),
 	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
