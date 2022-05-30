@@ -7,7 +7,6 @@ import "./interfaces/IChainConfig.sol";
 import "./interfaces/IGovernance.sol";
 import "./interfaces/ISlashingIndicator.sol";
 import "./interfaces/ISystemReward.sol";
-import "./interfaces/IRuntimeUpgradeEvmHook.sol";
 import "./interfaces/IValidatorSet.sol";
 import "./interfaces/IStaking.sol";
 import "./interfaces/IRuntimeUpgrade.sol";
@@ -32,9 +31,9 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
     IDeployerProxy internal immutable _DEPLOYER_PROXY_CONTRACT;
 
     // already used fields
-    uint256[_SKIP_OFFSET] private __dont_use;
+    uint256[_SKIP_OFFSET] private __removed;
     // reserved (1 for init)
-    uint256[_LAYOUT_OFFSET-_SKIP_OFFSET-1] private __reserved;
+    uint256[_LAYOUT_OFFSET - _SKIP_OFFSET - 1] private __reserved;
 
     constructor(
         IStaking stakingContract,
@@ -56,7 +55,7 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
         _DEPLOYER_PROXY_CONTRACT = deployerProxyContract;
     }
 
-    function init() external {
+    function init() external onlyBlockOne virtual {
         // we keep this function only for backward compatibility with parlia consensus engine
     }
 
@@ -82,6 +81,11 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
 
     modifier onlyZeroGasPrice() virtual {
         require(tx.gasprice == 0, "InjectorContextHolder: only zero gas price");
+        _;
+    }
+
+    modifier onlyBlockOne() virtual {
+        require(block.number == 1, "InjectorContextHolder: only block one");
         _;
     }
 

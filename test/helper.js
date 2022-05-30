@@ -88,13 +88,36 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     systemAddresses.push(toChecksumAddress(`0x${nonceHash.substring(24)}`));
   }
   // factory system contracts (order is important)
+  const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses);
+  await runtimeUpgrade.initialize({
+    // staking
+    genesisValidators: genesisValidators,
+    initialStakes: genesisValidators.map(() => '0'),
+    commissionRate: '0',
+    // chain config
+    activeValidatorsLength,
+    epochBlockInterval,
+    misdemeanorThreshold,
+    felonyThreshold,
+    validatorJailEpochLength,
+    undelegatePeriod,
+    minValidatorStakeAmount,
+    minStakingAmount,
+    // system reward
+    treasuryAccounts: Object.keys(systemTreasury),
+    treasuryShares: Object.values(systemTreasury),
+    // governance
+    votingPeriod,
+    governanceName: 'Governance',
+  });
+
   const staking = await Staking.new(...systemAddresses);
   const slashingIndicator = await SlashingIndicator.new(...systemAddresses);
   const systemReward = await SystemReward.new(...systemAddresses);
   const stakingPool = await StakingPool.new(...systemAddresses);
   const governance = await Governance.new(...systemAddresses);
   const chainConfig = await ChainConfig.new(...systemAddresses);
-  const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses);
+  // const runtimeUpgrade = await RuntimeUpgrade.new(...[].concat(systemAddresses));
   const deployerProxy = await DeployerProxy.new(...systemAddresses);
   // initialize system contracts
   await staking.initialize(genesisValidators, genesisValidators.map(() => '0'), '0');
@@ -103,7 +126,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   await stakingPool.initialize();
   await governance.initialize(votingPeriod, "Governance");
   await chainConfig.initialize(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount);
-  await runtimeUpgrade.initialize(runtimeUpgradeEvmHook);
+  // await runtimeUpgrade.initialize(runtimeUpgradeEvmHook);
   await deployerProxy.initialize(genesisDeployers);
   return {
     staking,
@@ -114,7 +137,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     governance,
     chainConfig,
     config: chainConfig,
-    runtimeUpgrade,
+    // runtimeUpgrade,
     deployer: deployerProxy,
     deployerProxy,
   }

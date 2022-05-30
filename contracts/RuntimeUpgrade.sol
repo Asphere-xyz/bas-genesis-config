@@ -1,16 +1,70 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import "@openzeppelin/contracts/utils/Create2.sol";
+
 import "./Injector.sol";
+import "./Staking.sol";
+import "./SlashingIndicator.sol";
+import "./SystemReward.sol";
+import "./StakingPool.sol";
+import "./Governance.sol";
+import "./ChainConfig.sol";
+
+contract RuntimeProxy is ERC1967Proxy {
+
+    constructor(address runtimeUpgrade, address defaultVersion, bytes memory inputData) ERC1967Proxy(defaultVersion, inputData) {
+        _changeAdmin(runtimeUpgrade);
+    }
+
+    modifier onlyFromRuntimeUpgrade() {
+        require(msg.sender == _getAdmin(), "ManageableProxy: only runtime upgrade");
+        _;
+    }
+
+    function getCurrentVersion() public view returns (address) {
+        return _implementation();
+    }
+
+    function upgradeToAndCall(address impl, bytes memory data) external onlyFromRuntimeUpgrade {
+        _upgradeToAndCall(impl, data, false);
+    }
+}
 
 contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
-    event SmartContractUpgrade(address contractAddress, bytes newByteCode);
+    event Upgraded(address contractAddress, bytes newByteCode);
+    event Deployed(address contractAddress, bytes newByteCode);
 
-    // address of the EVM hook
+    struct GenesisConfig {
+        // staking
+        address[] genesisValidators;
+        uint256[] initialStakes;
+        uint16 commissionRate;
+        // chain config
+        uint32 activeValidatorsLength;
+        uint32 epochBlockInterval;
+        uint32 misdemeanorThreshold;
+        uint32 felonyThreshold;
+        uint32 validatorJailEpochLength;
+        uint32 undelegatePeriod;
+        uint256 minValidatorStakeAmount;
+        uint256 minStakingAmount;
+        // system reward
+        address[] treasuryAccounts;
+        uint16[] treasuryShares;
+        // governance
+        uint64 votingPeriod;
+        string governanceName;
+    }
+
+    // address of the EVM hook (not in use anymore)
     address internal _evmHookAddress;
     // list of new deployed system smart contracts
     address[] internal _deployedSystemContracts;
+    // genesis config
+    GenesisConfig internal _genesisConfig;
 
     constructor(
         IStaking stakingContract,
@@ -33,64 +87,127 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     ) {
     }
 
-    function initialize(address evmHookAddress) external initializer {
-        _evmHookAddress = evmHookAddress;
+    function initialize(GenesisConfig memory genesisConfig) external initializer {
+        _genesisConfig = genesisConfig;
     }
 
-    function getEvmHookAddress() external view override returns (address) {
-        return _evmHookAddress;
+    function init() external onlyBlockOne override {
+        // deploy staking contract
+        Staking stakingV0 = new Staking{salt : keccak256("StakingV0")}(
+            _STAKING_CONTRACT,
+            _SLASHING_INDICATOR_CONTRACT,
+            _SYSTEM_REWARD_CONTRACT,
+            _STAKING_POOL_CONTRACT,
+            _GOVERNANCE_CONTRACT,
+            _CHAIN_CONFIG_CONTRACT,
+            _RUNTIME_UPGRADE_CONTRACT,
+            _DEPLOYER_PROXY_CONTRACT
+        );
+        SlashingIndicator slashingIndicatorV0 = new SlashingIndicator{salt : keccak256("SlashingIndicatorV0")}(
+            _STAKING_CONTRACT,
+            _SLASHING_INDICATOR_CONTRACT,
+            _SYSTEM_REWARD_CONTRACT,
+            _STAKING_POOL_CONTRACT,
+            _GOVERNANCE_CONTRACT,
+            _CHAIN_CONFIG_CONTRACT,
+            _RUNTIME_UPGRADE_CONTRACT,
+            _DEPLOYER_PROXY_CONTRACT
+        );
+        SystemReward systemRewardV0 = new SystemReward{salt : keccak256("SystemRewardV0")}(
+            _STAKING_CONTRACT,
+            _SLASHING_INDICATOR_CONTRACT,
+            _SYSTEM_REWARD_CONTRACT,
+            _STAKING_POOL_CONTRACT,
+            _GOVERNANCE_CONTRACT,
+            _CHAIN_CONFIG_CONTRACT,
+            _RUNTIME_UPGRADE_CONTRACT,
+            _DEPLOYER_PROXY_CONTRACT
+        );
+        StakingPool stakingPoolV0 = new StakingPool{salt : keccak256("StakingPoolV0")}(
+            _STAKING_CONTRACT,
+            _SLASHING_INDICATOR_CONTRACT,
+            _SYSTEM_REWARD_CONTRACT,
+            _STAKING_POOL_CONTRACT,
+            _GOVERNANCE_CONTRACT,
+            _CHAIN_CONFIG_CONTRACT,
+            _RUNTIME_UPGRADE_CONTRACT,
+            _DEPLOYER_PROXY_CONTRACT
+        );
+        Governance governanceV0 = new Governance{salt : keccak256("GovernanceV0")}(
+            _STAKING_CONTRACT,
+            _SLASHING_INDICATOR_CONTRACT,
+            _SYSTEM_REWARD_CONTRACT,
+            _STAKING_POOL_CONTRACT,
+            _GOVERNANCE_CONTRACT,
+            _CHAIN_CONFIG_CONTRACT,
+            _RUNTIME_UPGRADE_CONTRACT,
+            _DEPLOYER_PROXY_CONTRACT
+        );
+        ChainConfig chainConfigV0 = new ChainConfig{salt : keccak256("ChainConfigV0")}(
+            _STAKING_CONTRACT,
+            _SLASHING_INDICATOR_CONTRACT,
+            _SYSTEM_REWARD_CONTRACT,
+            _STAKING_POOL_CONTRACT,
+            _GOVERNANCE_CONTRACT,
+            _CHAIN_CONFIG_CONTRACT,
+            _RUNTIME_UPGRADE_CONTRACT,
+            _DEPLOYER_PROXY_CONTRACT
+        );
+        // upgrade implementations to the latest version
+        RuntimeProxy(payable(address(_STAKING_CONTRACT))).upgradeToAndCall(address(stakingV0), "");
+        RuntimeProxy(payable(address(_SLASHING_INDICATOR_CONTRACT))).upgradeToAndCall(address(slashingIndicatorV0), "");
+        RuntimeProxy(payable(address(_SYSTEM_REWARD_CONTRACT))).upgradeToAndCall(address(systemRewardV0), "");
+        RuntimeProxy(payable(address(_STAKING_POOL_CONTRACT))).upgradeToAndCall(address(stakingPoolV0), "");
+        RuntimeProxy(payable(address(_GOVERNANCE_CONTRACT))).upgradeToAndCall(address(governanceV0), "");
+        RuntimeProxy(payable(address(_CHAIN_CONFIG_CONTRACT))).upgradeToAndCall(address(chainConfigV0), "");
+        // initialize system contracts (chain config must be the first)
+        ChainConfig(payable(address(_CHAIN_CONFIG_CONTRACT))).initialize(
+            _genesisConfig.activeValidatorsLength,
+            _genesisConfig.epochBlockInterval,
+            _genesisConfig.misdemeanorThreshold,
+            _genesisConfig.felonyThreshold,
+            _genesisConfig.validatorJailEpochLength,
+            _genesisConfig.undelegatePeriod,
+            _genesisConfig.minValidatorStakeAmount,
+            _genesisConfig.minStakingAmount
+        );
+        Staking(payable(address(_STAKING_CONTRACT))).initialize(_genesisConfig.genesisValidators, _genesisConfig.initialStakes, _genesisConfig.commissionRate);
+        SlashingIndicator(payable(address(_SLASHING_INDICATOR_CONTRACT))).initialize();
+        SystemReward(payable(address(_SYSTEM_REWARD_CONTRACT))).initialize(_genesisConfig.treasuryAccounts, _genesisConfig.treasuryShares);
+        Governance(payable(address(_GOVERNANCE_CONTRACT))).initialize(_genesisConfig.votingPeriod, _genesisConfig.governanceName);
+        // fill array with deployed smart contracts
+        _deployedSystemContracts.push(address(_STAKING_CONTRACT));
+        _deployedSystemContracts.push(address(_SLASHING_INDICATOR_CONTRACT));
+        _deployedSystemContracts.push(address(_SYSTEM_REWARD_CONTRACT));
+        _deployedSystemContracts.push(address(_STAKING_POOL_CONTRACT));
+        _deployedSystemContracts.push(address(_GOVERNANCE_CONTRACT));
+        _deployedSystemContracts.push(address(_CHAIN_CONFIG_CONTRACT));
     }
 
-    function upgradeSystemSmartContract(
-        address systemContractAddress,
-        bytes calldata newByteCode,
-        bytes calldata applyFunction
-    ) external onlyFromGovernance virtual override {
+    function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes32 salt, bytes calldata data) external onlyFromGovernance virtual override {
+        // make sure that we're upgrading existing smart contract that already has implementation
+        RuntimeProxy proxy = RuntimeProxy(account);
+        require(proxy.getCurrentVersion() != address(0x00), "RuntimeUpgrade: implementation not found");
         // we allow to upgrade only system smart contracts
-        require(_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only system smart contract");
+        require(_isSystemSmartContract(account), "RuntimeUpgrade: only system smart contract");
         // upgrade system contract
-        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction, IRuntimeUpgradeEvmHook.upgradeTo.selector);
+        address impl = Create2.deploy(0, salt, bytecode);
+        proxy.upgradeToAndCall(impl, data);
     }
 
-    function deploySystemSmartContract(
-        address systemContractAddress,
-        bytes calldata newByteCode,
-        bytes calldata applyFunction
-    ) external onlyFromGovernance virtual override {
-        // disallow to upgrade plain contracts or system contracts (only new)
-        require(!_isContract(systemContractAddress) && !_isSystemSmartContract(systemContractAddress), "RuntimeUpgrade: only new address");
-        require(systemContractAddress != address(_RUNTIME_UPGRADE_CONTRACT), "RuntimeUpgrade: this contract can't be upgraded");
-        // upgrade system contract with provided bytecode
-        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction, IRuntimeUpgradeEvmHook.deployTo.selector);
-        // extend list of new system contracts to let it be a system smart contract
-        _deployedSystemContracts.push(systemContractAddress);
+    function deploySystemSmartContract(address payable account, bytes calldata bytecode, bytes32 salt, bytes calldata data) external onlyFromGovernance virtual override {
+        // make sure that we're upgrading existing smart contract that already has implementation
+        RuntimeProxy proxy = RuntimeProxy(account);
+        require(proxy.getCurrentVersion() == address(0x00), "RuntimeUpgrade: already deployed");
+        // we allow to upgrade only system smart contracts
+        require(!_isSystemSmartContract(account), "RuntimeUpgrade: already deployed");
+        // upgrade system contract
+        address impl = Create2.deploy(0, salt, bytecode);
+        proxy.upgradeToAndCall(impl, data);
     }
 
-    function getSystemContracts() public view override returns (address[] memory) {
-        address[] memory result = new address[](8 + _deployedSystemContracts.length);
-        // BSC-compatible
-        result[0] = address(_STAKING_CONTRACT);
-        result[1] = address(_SLASHING_INDICATOR_CONTRACT);
-        result[2] = address(_SYSTEM_REWARD_CONTRACT);
-        // BAS-defined
-        result[3] = address(_STAKING_POOL_CONTRACT);
-        result[4] = address(_GOVERNANCE_CONTRACT);
-        result[5] = address(_CHAIN_CONFIG_CONTRACT);
-        result[6] = address(_RUNTIME_UPGRADE_CONTRACT);
-        result[7] = address(_DEPLOYER_PROXY_CONTRACT);
-        // copy deployed system smart contracts
-        for (uint256 i = 0; i < _deployedSystemContracts.length; i++) {
-            result[8 + i] = _deployedSystemContracts[i];
-        }
-        return result;
-    }
-
-    function _isContract(address account) internal view returns (bool) {
-        uint256 size;
-        assembly {
-            size := extcodesize(account)
-        }
-        return size > 0;
+    function getSystemContracts() public view returns (address[] memory) {
+        return _deployedSystemContracts;
     }
 
     function _isSystemSmartContract(address contractAddress) internal view returns (bool) {
@@ -99,29 +216,5 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
             if (systemContracts[i] == contractAddress) return true;
         }
         return false;
-    }
-
-    function _upgradeSystemSmartContract(
-        address systemContractAddress,
-        bytes calldata newByteCode,
-        bytes calldata applyFunction,
-        bytes4 deploySelector
-    ) internal {
-        // modify bytecode using EVM hook
-        bytes memory inputData = abi.encodeWithSelector(deploySelector, systemContractAddress, newByteCode);
-        (bool result,) = address(_evmHookAddress).call(inputData);
-        require(result, "RuntimeUpgrade: failed to invoke EVM hook");
-        // if this is new smart contract then run "init" function
-//        IInjector injector = IInjector(systemContractAddress);
-//        if (!injector.isInitialized()) {
-//            injector.init();
-//        }
-        // call migration function if specified
-        if (applyFunction.length > 0) {
-            (bool result2,) = systemContractAddress.call(applyFunction);
-            require(result2, "RuntimeUpgrade: migration failed");
-        }
-        // emit event
-        emit SmartContractUpgrade(systemContractAddress, newByteCode);
     }
 }
