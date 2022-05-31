@@ -56,6 +56,19 @@ func createExtraData(validators []common.Address) []byte {
 	return extra
 }
 
+func readStateObjectsFromState(f *state.StateDB) map[common.Address]*state.StateObject {
+	var result map[common.Address]*state.StateObject
+	rs := reflect.ValueOf(*f)
+	rf := rs.FieldByName("stateObjects")
+	rs2 := reflect.New(rs.Type()).Elem()
+	rs2.Set(rs)
+	rf = rs2.FieldByName("stateObjects")
+	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
+	ri := reflect.ValueOf(&result).Elem()
+	ri.Set(rf)
+	return result
+}
+
 func readDirtyStorageFromState(f *state.StateObject) state.Storage {
 	var result map[common.Hash]common.Hash
 	rs := reflect.ValueOf(*f)
@@ -78,6 +91,9 @@ var chainConfigAddress = common.HexToAddress("0x00000000000000000000000000000000
 var runtimeUpgradeAddress = common.HexToAddress("0x0000000000000000000000000000000000007004")
 var deployerProxyAddress = common.HexToAddress("0x0000000000000000000000000000000000007005")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
+
+//go:embed build/contracts/RuntimeProxy.json
+var runtimeProxyArtifact []byte
 
 //go:embed build/contracts/Staking.json
 var stakingRawArtifact []byte
@@ -150,60 +166,109 @@ func traceCallError(deployedBytecode []byte) {
 	println()
 }
 
-func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool, balance *big.Int) {
+func byteCodeFromArtifact(rawArtifact []byte) []byte {
+	artifact := &artifactData{}
+	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
+		panic(err)
+	}
+	return hexutil.MustDecode(artifact.Bytecode)
+}
+
+func mustNewType(t string) abi.Type {
+	typ, _ := abi.NewType(t, t, nil)
+	return typ
+}
+
+func createInitializer(typeNames []string, params []interface{}) []byte {
+	initializerArgs, err := newArguments(typeNames...).Pack(params...)
+	if err != nil {
+		panic(err)
+	}
+	initializerSig := crypto.Keccak256([]byte(fmt.Sprintf("initialize(%s)", strings.Join(typeNames, ","))))[:4]
+	return append(initializerSig, initializerArgs...)
+}
+
+func createSimpleBytecode(rawArtifact []byte) []byte {
 	constructorArgs, err := newArguments(
 		"address", "address", "address", "address", "address", "address", "address", "address").Pack(
 		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress)
 	if err != nil {
 		panic(err)
 	}
-	artifact := &artifactData{}
-	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
+	return append(byteCodeFromArtifact(rawArtifact), constructorArgs...)
+}
+
+func createProxyBytecodeWithConstructor(rawArtifact []byte, initTypes []string, initArgs []interface{}) []byte {
+	constructorArgs, err := newArguments(
+		"address", "address", "address", "address", "address", "address", "address", "address").Pack(
+		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress)
+	if err != nil {
 		panic(err)
 	}
-	bytecode := append(hexutil.MustDecode(artifact.Bytecode), constructorArgs...)
-	// simulate constructor execution
+	proxyArgs := abi.Arguments{
+		abi.Argument{Type: mustNewType("address")},
+		abi.Argument{Type: mustNewType("bytes")},
+		abi.Argument{Type: mustNewType("bytes")},
+	}
+	runtimeProxyConstructor, err := proxyArgs.Pack(
+		// address of runtime upgrade that can do future upgrades
+		runtimeUpgradeAddress,
+		// bytecode of the default implementation system smart contract
+		append(byteCodeFromArtifact(rawArtifact), constructorArgs...),
+		// initializer for system smart contract (it's called using "init()" function)
+		createInitializer(initTypes, initArgs),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return append(byteCodeFromArtifact(runtimeProxyArtifact), runtimeProxyConstructor...)
+}
+
+func createVirtualMachine(genesis *core.Genesis, systemContract common.Address, balance *big.Int) (*state.StateDB, *vm.EVM) {
 	statedb, _ := state.New(common.Hash{}, state.NewDatabaseWithConfig(rawdb.NewDatabase(memorydb.New()), &trie.Config{}), nil)
-	statedb.SetBalance(systemContract, balance)
+	if balance != nil {
+		statedb.SetBalance(systemContract, balance)
+	}
 	block := genesis.ToBlock(nil)
 	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
 	txContext := core.NewEVMTxContext(
 		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
 	)
-	virtualMachine := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
-	deployedBytecode, _, err := virtualMachine.CreateWithAddress(common.Address{}, bytecode, 10_000_000, big.NewInt(0), systemContract)
+	return statedb, vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
+}
+
+func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, balance *big.Int) {
+	if balance == nil {
+		balance = big.NewInt(0)
+	}
+	statedb, virtualMachine := createVirtualMachine(genesis, systemContract, balance)
+	var bytecode []byte
+	if systemContract == runtimeUpgradeAddress {
+		bytecode = createSimpleBytecode(rawArtifact)
+	} else {
+		bytecode = createProxyBytecodeWithConstructor(rawArtifact, typeNames, params)
+	}
+	result, _, err := virtualMachine.CreateWithAddress(common.Address{}, bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
-		traceCallError(deployedBytecode)
+		traceCallError(result)
 		panic(err)
-	}
-	// invoke initializer
-	initializerArgs, err := newArguments(typeNames...).Pack(params...)
-	if err != nil {
-		panic(err)
-	}
-	initializerSig := crypto.Keccak256([]byte(fmt.Sprintf("initialize(%s)", strings.Join(typeNames, ","))))[:4]
-	initializerSig = append(initializerSig, initializerArgs...)
-	if !silent {
-		fmt.Printf(" + calling initializer: address=%s sig=%s\n", systemContract.Hex(), hexutil.Encode(initializerSig))
-	}
-	errorCode, _, err := virtualMachine.Call(vm.AccountRef(common.Address{}), systemContract, initializerSig, 10_000_000, big.NewInt(0))
-	if err != nil {
-		traceCallError(errorCode)
-		panic(err)
-	}
-	// read state changes from state database
-	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(systemContract))
-	genesisAccount := core.GenesisAccount{
-		Code:    deployedBytecode,
-		Storage: storage.Copy(),
-		Balance: big.NewInt(0),
-		Nonce:   0,
-		Logs:    core.ToJsonLogs(statedb.Logs()),
 	}
 	if genesis.Alloc == nil {
 		genesis.Alloc = make(core.GenesisAlloc)
 	}
-	genesis.Alloc[systemContract] = genesisAccount
+	// constructor might have side effects so better to save all state changes
+	stateObjects := readStateObjectsFromState(statedb)
+	for addr, stateObject := range stateObjects {
+		storage := readDirtyStorageFromState(stateObject)
+		genesisAccount := core.GenesisAccount{
+			Code:    stateObject.Code(statedb.Database()),
+			Storage: storage.Copy(),
+			Balance: stateObject.Balance(),
+		}
+		genesis.Alloc[addr] = genesisAccount
+	}
+	// someone touches zero address and it increases nonce
+	delete(genesis.Alloc, common.Address{})
 }
 
 func createGenesisConfig(config genesisConfig, targetFile string) error {
@@ -226,12 +291,11 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		initialStakes = append(initialStakes, initialStake)
 		initialStakeTotal.Add(initialStakeTotal, initialStake)
 	}
-	silent := targetFile == "stdout"
 	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint256[]", "uint16"}, []interface{}{
 		config.Validators,
 		initialStakes,
 		uint16(config.CommissionRate),
-	}, silent, initialStakeTotal)
+	}, initialStakeTotal)
 	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
@@ -241,9 +305,9 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.UndelegatePeriod,
 		(*big.Int)(config.ConsensusParams.MinValidatorStakeAmount),
 		(*big.Int)(config.ConsensusParams.MinStakingAmount),
-	}, silent, nil)
-	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, silent, nil)
-	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, silent, nil)
+	}, nil)
+	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, nil)
+	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, nil)
 	var treasuryAddresses []common.Address
 	var treasuryShares []uint16
 	for k, v := range config.SystemTreasury {
@@ -252,24 +316,20 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	}
 	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address[]", "uint16[]"}, []interface{}{
 		treasuryAddresses, treasuryShares,
-	}, silent, nil)
+	}, nil)
 	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256", "string"}, []interface{}{
 		big.NewInt(config.VotingPeriod), "Governance",
-	}, silent, nil)
+	}, nil)
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
 		systemcontract.EvmHookRuntimeUpgradeAddress,
-	}, silent, nil)
+	}, nil)
 	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
-	}, silent, nil)
+	}, nil)
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 	}
-	// set staking allocation
-	stakingAlloc := genesis.Alloc[stakingAddress]
-	stakingAlloc.Balance = initialStakeTotal
-	genesis.Alloc[stakingAddress] = stakingAlloc
 	// apply faucet
 	for key, value := range config.Faucet {
 		balance, ok := new(big.Int).SetString(value[2:], 16)

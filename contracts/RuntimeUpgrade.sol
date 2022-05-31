@@ -4,74 +4,20 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
 
-import "./Injector.sol";
-import "./Staking.sol";
-import "./SlashingIndicator.sol";
-import "./SystemReward.sol";
-import "./StakingPool.sol";
-import "./Governance.sol";
-import "./ChainConfig.sol";
-import "./DeployerProxy.sol";
+import "./libs/SlotUtils.sol";
 
-contract RuntimeProxy is ERC1967Proxy {
-
-    constructor(address runtimeUpgrade, bytes memory bytecode, bytes memory inputData) ERC1967Proxy(_deployDefaultVersion(bytecode), inputData) {
-        _changeAdmin(runtimeUpgrade);
-    }
-
-    function getCurrentVersion() public view returns (address) {
-        return _implementation();
-    }
-
-    function _deployDefaultVersion(bytes memory bytecode) internal returns (address) {
-        return Create2.deploy(0, bytes32(0x00), bytecode);
-    }
-
-    modifier onlyFromRuntimeUpgrade() {
-        require(msg.sender == _getAdmin(), "ManageableProxy: only runtime upgrade");
-        _;
-    }
-
-    function upgradeToAndCall(address impl, bytes memory data) external onlyFromRuntimeUpgrade {
-        _upgradeToAndCall(impl, data, false);
-    }
-}
+import "./InjectorContextHolder.sol";
+import "./RuntimeProxy.sol";
 
 contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
     event Upgraded(address contractAddress, bytes newByteCode);
     event Deployed(address contractAddress, bytes newByteCode);
 
-    struct GenesisConfig {
-        // staking
-        address[] validators;
-        uint256[] initialStakes;
-        uint16 commissionRate;
-        // chain config
-        uint32 activeValidatorsLength;
-        uint32 epochBlockInterval;
-        uint32 misdemeanorThreshold;
-        uint32 felonyThreshold;
-        uint32 validatorJailEpochLength;
-        uint32 undelegatePeriod;
-        uint256 minValidatorStakeAmount;
-        uint256 minStakingAmount;
-        // system reward
-        address[] treasuryAccounts;
-        uint16[] treasuryShares;
-        // governance
-        uint64 votingPeriod;
-        string governanceName;
-        // deployer proxy
-        address[] deployers;
-    }
-
     // address of the EVM hook (not in use anymore)
     address internal _evmHookAddress;
     // list of new deployed system smart contracts
     address[] internal _deployedSystemContracts;
-    // genesis config
-    GenesisConfig internal _genesisConfig;
 
     constructor(
         IStaking stakingContract,
@@ -93,28 +39,8 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         deployerProxyContract
     ) {
     }
-
-    function initialize(GenesisConfig memory genesisConfig) external initializer {
-        _genesisConfig = genesisConfig;
-    }
-
+    
     function init() external onlyBlockOne override {
-        // initialize system contracts (chain config must be the first)
-        ChainConfig(payable(address(_CHAIN_CONFIG_CONTRACT))).initialize(
-            _genesisConfig.activeValidatorsLength,
-            _genesisConfig.epochBlockInterval,
-            _genesisConfig.misdemeanorThreshold,
-            _genesisConfig.felonyThreshold,
-            _genesisConfig.validatorJailEpochLength,
-            _genesisConfig.undelegatePeriod,
-            _genesisConfig.minValidatorStakeAmount,
-            _genesisConfig.minStakingAmount
-        );
-        Staking(payable(address(_STAKING_CONTRACT))).initialize(_genesisConfig.validators, _genesisConfig.initialStakes, _genesisConfig.commissionRate);
-        SlashingIndicator(payable(address(_SLASHING_INDICATOR_CONTRACT))).initialize();
-        SystemReward(payable(address(_SYSTEM_REWARD_CONTRACT))).initialize(_genesisConfig.treasuryAccounts, _genesisConfig.treasuryShares);
-        Governance(payable(address(_GOVERNANCE_CONTRACT))).initialize(_genesisConfig.votingPeriod, _genesisConfig.governanceName);
-        DeployerProxy(payable(address(_DEPLOYER_PROXY_CONTRACT))).initialize(_genesisConfig.deployers);
         // fill array with deployed smart contracts
         _deployedSystemContracts.push(address(_STAKING_CONTRACT));
         _deployedSystemContracts.push(address(_SLASHING_INDICATOR_CONTRACT));

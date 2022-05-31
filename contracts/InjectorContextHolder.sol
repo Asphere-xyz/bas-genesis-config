@@ -56,7 +56,7 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
     }
 
     function init() external onlyBlockOne virtual {
-        // we keep this function only for backward compatibility with parlia consensus engine
+        // if you use proxy setup then this function call is handled by proxy
     }
 
     modifier onlyFromCoinbase() virtual {

@@ -466,10 +466,8 @@ contract("Staking", async (accounts) => {
     assert.deepEqual(Array.from(await parlia.getValidators()).sort(), [
       validator1,
       validator2,
-    ])
+    ].sort())
     await waitForNextEpoch(parlia)
-    console.log(`Validator #1: ${validator1}`);
-    console.log(`Validator #2: ${validator2}`);
     for (let i = 0; i < 10; i++) {
       await parlia.slash(validator1);
     }
@@ -482,7 +480,7 @@ contract("Staking", async (accounts) => {
     assert.deepEqual(Array.from(await parlia.getValidators()).sort(), [
       validator1,
       validator2,
-    ])
+    ].sort())
   });
   it("user can redelegate his staking rewards", async () => {
     const {parlia} = await newMockContract(owner, {

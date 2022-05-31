@@ -5,7 +5,8 @@
 /** @function before */
 /** @var assert */
 
-const FakeRuntimeUpgradeEvmHook = artifacts.require('FakeRuntimeUpgradeEvmHook');
+const RuntimeProxy = artifacts.require('RuntimeProxy');
+
 const {newMockContract} = require("./helper");
 
 contract("RuntimeUpgrade", async (accounts) => {
@@ -20,4 +21,8 @@ contract("RuntimeUpgrade", async (accounts) => {
   //   assert.equal(res.logs[0].args.contractAddress, systemSmartContracts[0])
   //   assert.equal(res.logs[0].args.newByteCode, '0xbadcab1e')
   // });
+  it("initializer params can be saved", async () => {
+    const runtimeProxy = await RuntimeProxy.new(owner, '0x607b60005260016000f3', '0xbadcab1e');
+    assert.equal(await runtimeProxy.getInitializer(), '0xbadcab1e');
+  });
 });

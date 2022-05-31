@@ -5,7 +5,7 @@ import "./interfaces/IStaking.sol";
 import "./interfaces/IStakingPool.sol";
 import "./interfaces/IInjector.sol";
 
-import "./Injector.sol";
+import "./InjectorContextHolder.sol";
 import "./Staking.sol";
 
 contract StakingPool is InjectorContextHolder, IStakingPool {

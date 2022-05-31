@@ -45,6 +45,12 @@ const DEFAULT_CONTRACT_TYPES = {
   DeployerProxy: DeployerProxy,
 };
 
+const encodeABI = (types, args) => {
+  const sig = keccak256(Buffer.from('initialize(' + types.join(',') + ')')).toString('hex').substring(0, 8),
+    abi = AbiCoder.encodeParameters(types, args).substring(2)
+  return `0x${sig}${abi}`
+}
+
 const newContractUsingTypes = async (owner, params, types = {}) => {
   const {
     ChainConfig,
@@ -87,46 +93,30 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   const injectorBytecode = ({bytecode}) => {
     return bytecode + injectorArgs.substr(2)
   }
-  // factory system contracts (order is important)
-  const staking = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Staking), '0x', {from: owner});
-  const slashingIndicator = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SlashingIndicator), '0x', {from: owner});
-  const systemReward = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SystemReward), '0x', {from: owner});
-  const stakingPool = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(StakingPool), '0x', {from: owner});
-  const governance = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Governance), '0x', {from: owner});
-  const chainConfig = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(ChainConfig), '0x', {from: owner});
+  // factory system contracts
+  const staking = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Staking), encodeABI(['address[]', 'uint256[]', 'uint16'], [genesisValidators, genesisValidators.map(() => '0'), '0']), {from: owner});
+  const slashingIndicator = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SlashingIndicator), encodeABI([], []), {from: owner});
+  const systemReward = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SystemReward), encodeABI(['address[]', 'uint16[]'], [Object.keys(systemTreasury), Object.values(systemTreasury)]), {from: owner});
+  const stakingPool = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(StakingPool), encodeABI([], []), {from: owner});
+  const governance = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Governance), encodeABI(['uint256', 'string'], [votingPeriod, 'Governance']), {from: owner});
+  const chainConfig = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(ChainConfig), encodeABI(['uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint256', 'uint256'], [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount]), {from: owner});
   const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses, {from: owner});
-  const deployerProxy = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(DeployerProxy), '0x', {from: owner});
+  const deployerProxy = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(DeployerProxy), encodeABI(['address[]'], [genesisDeployers]), {from: owner});
   // make sure runtime upgrade address is correct
   if (runtimeUpgrade.address.toLowerCase() !== runtimeUpgradeAddress.toLowerCase()) {
     console.log(`System addresses: ${JSON.stringify(systemAddresses, null, 2)}`)
     throw new Error(`Runtime upgrade position mismatched, its not allowed (${runtimeUpgrade.address} != ${runtimeUpgradeAddress})`)
   }
-  // save genesis config to the runtime upgrade
-  await runtimeUpgrade.initialize({
-    // staking
-    validators: genesisValidators,
-    initialStakes: genesisValidators.map(() => '0'),
-    commissionRate: '0',
-    // chain config
-    activeValidatorsLength,
-    epochBlockInterval,
-    misdemeanorThreshold,
-    felonyThreshold,
-    validatorJailEpochLength,
-    undelegatePeriod,
-    minValidatorStakeAmount,
-    minStakingAmount,
-    // system reward
-    treasuryAccounts: Object.keys(systemTreasury),
-    treasuryShares: Object.values(systemTreasury),
-    // governance
-    votingPeriod,
-    governanceName: 'Governance',
-    // deployer proxy
-    deployers: genesisDeployers,
-  });
   // run consensus init
   await runtimeUpgrade.init({from: owner});
+  await staking.init({from: owner});
+  await slashingIndicator.init({from: owner});
+  await systemReward.init({from: owner});
+  await stakingPool.init({from: owner});
+  await governance.init({from: owner});
+  await chainConfig.init({from: owner});
+  await deployerProxy.init({from: owner});
+  // map proxies to the correct ABIs
   return {
     staking: await Staking.at(staking.address),
     parlia: await Staking.at(staking.address),
