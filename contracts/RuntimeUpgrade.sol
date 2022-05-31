@@ -11,20 +11,25 @@ import "./SystemReward.sol";
 import "./StakingPool.sol";
 import "./Governance.sol";
 import "./ChainConfig.sol";
+import "./DeployerProxy.sol";
 
 contract RuntimeProxy is ERC1967Proxy {
 
-    constructor(address runtimeUpgrade, address defaultVersion, bytes memory inputData) ERC1967Proxy(defaultVersion, inputData) {
+    constructor(address runtimeUpgrade, bytes memory bytecode, bytes memory inputData) ERC1967Proxy(_deployDefaultVersion(bytecode), inputData) {
         _changeAdmin(runtimeUpgrade);
+    }
+
+    function getCurrentVersion() public view returns (address) {
+        return _implementation();
+    }
+
+    function _deployDefaultVersion(bytes memory bytecode) internal returns (address) {
+        return Create2.deploy(0, bytes32(0x00), bytecode);
     }
 
     modifier onlyFromRuntimeUpgrade() {
         require(msg.sender == _getAdmin(), "ManageableProxy: only runtime upgrade");
         _;
-    }
-
-    function getCurrentVersion() public view returns (address) {
-        return _implementation();
     }
 
     function upgradeToAndCall(address impl, bytes memory data) external onlyFromRuntimeUpgrade {
@@ -39,7 +44,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
     struct GenesisConfig {
         // staking
-        address[] genesisValidators;
+        address[] validators;
         uint256[] initialStakes;
         uint16 commissionRate;
         // chain config
@@ -57,6 +62,8 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         // governance
         uint64 votingPeriod;
         string governanceName;
+        // deployer proxy
+        address[] deployers;
     }
 
     // address of the EVM hook (not in use anymore)
@@ -92,74 +99,6 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     }
 
     function init() external onlyBlockOne override {
-        // deploy staking contract
-        Staking stakingV0 = new Staking{salt : keccak256("StakingV0")}(
-            _STAKING_CONTRACT,
-            _SLASHING_INDICATOR_CONTRACT,
-            _SYSTEM_REWARD_CONTRACT,
-            _STAKING_POOL_CONTRACT,
-            _GOVERNANCE_CONTRACT,
-            _CHAIN_CONFIG_CONTRACT,
-            _RUNTIME_UPGRADE_CONTRACT,
-            _DEPLOYER_PROXY_CONTRACT
-        );
-        SlashingIndicator slashingIndicatorV0 = new SlashingIndicator{salt : keccak256("SlashingIndicatorV0")}(
-            _STAKING_CONTRACT,
-            _SLASHING_INDICATOR_CONTRACT,
-            _SYSTEM_REWARD_CONTRACT,
-            _STAKING_POOL_CONTRACT,
-            _GOVERNANCE_CONTRACT,
-            _CHAIN_CONFIG_CONTRACT,
-            _RUNTIME_UPGRADE_CONTRACT,
-            _DEPLOYER_PROXY_CONTRACT
-        );
-        SystemReward systemRewardV0 = new SystemReward{salt : keccak256("SystemRewardV0")}(
-            _STAKING_CONTRACT,
-            _SLASHING_INDICATOR_CONTRACT,
-            _SYSTEM_REWARD_CONTRACT,
-            _STAKING_POOL_CONTRACT,
-            _GOVERNANCE_CONTRACT,
-            _CHAIN_CONFIG_CONTRACT,
-            _RUNTIME_UPGRADE_CONTRACT,
-            _DEPLOYER_PROXY_CONTRACT
-        );
-        StakingPool stakingPoolV0 = new StakingPool{salt : keccak256("StakingPoolV0")}(
-            _STAKING_CONTRACT,
-            _SLASHING_INDICATOR_CONTRACT,
-            _SYSTEM_REWARD_CONTRACT,
-            _STAKING_POOL_CONTRACT,
-            _GOVERNANCE_CONTRACT,
-            _CHAIN_CONFIG_CONTRACT,
-            _RUNTIME_UPGRADE_CONTRACT,
-            _DEPLOYER_PROXY_CONTRACT
-        );
-        Governance governanceV0 = new Governance{salt : keccak256("GovernanceV0")}(
-            _STAKING_CONTRACT,
-            _SLASHING_INDICATOR_CONTRACT,
-            _SYSTEM_REWARD_CONTRACT,
-            _STAKING_POOL_CONTRACT,
-            _GOVERNANCE_CONTRACT,
-            _CHAIN_CONFIG_CONTRACT,
-            _RUNTIME_UPGRADE_CONTRACT,
-            _DEPLOYER_PROXY_CONTRACT
-        );
-        ChainConfig chainConfigV0 = new ChainConfig{salt : keccak256("ChainConfigV0")}(
-            _STAKING_CONTRACT,
-            _SLASHING_INDICATOR_CONTRACT,
-            _SYSTEM_REWARD_CONTRACT,
-            _STAKING_POOL_CONTRACT,
-            _GOVERNANCE_CONTRACT,
-            _CHAIN_CONFIG_CONTRACT,
-            _RUNTIME_UPGRADE_CONTRACT,
-            _DEPLOYER_PROXY_CONTRACT
-        );
-        // upgrade implementations to the latest version
-        RuntimeProxy(payable(address(_STAKING_CONTRACT))).upgradeToAndCall(address(stakingV0), "");
-        RuntimeProxy(payable(address(_SLASHING_INDICATOR_CONTRACT))).upgradeToAndCall(address(slashingIndicatorV0), "");
-        RuntimeProxy(payable(address(_SYSTEM_REWARD_CONTRACT))).upgradeToAndCall(address(systemRewardV0), "");
-        RuntimeProxy(payable(address(_STAKING_POOL_CONTRACT))).upgradeToAndCall(address(stakingPoolV0), "");
-        RuntimeProxy(payable(address(_GOVERNANCE_CONTRACT))).upgradeToAndCall(address(governanceV0), "");
-        RuntimeProxy(payable(address(_CHAIN_CONFIG_CONTRACT))).upgradeToAndCall(address(chainConfigV0), "");
         // initialize system contracts (chain config must be the first)
         ChainConfig(payable(address(_CHAIN_CONFIG_CONTRACT))).initialize(
             _genesisConfig.activeValidatorsLength,
@@ -171,10 +110,11 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
             _genesisConfig.minValidatorStakeAmount,
             _genesisConfig.minStakingAmount
         );
-        Staking(payable(address(_STAKING_CONTRACT))).initialize(_genesisConfig.genesisValidators, _genesisConfig.initialStakes, _genesisConfig.commissionRate);
+        Staking(payable(address(_STAKING_CONTRACT))).initialize(_genesisConfig.validators, _genesisConfig.initialStakes, _genesisConfig.commissionRate);
         SlashingIndicator(payable(address(_SLASHING_INDICATOR_CONTRACT))).initialize();
         SystemReward(payable(address(_SYSTEM_REWARD_CONTRACT))).initialize(_genesisConfig.treasuryAccounts, _genesisConfig.treasuryShares);
         Governance(payable(address(_GOVERNANCE_CONTRACT))).initialize(_genesisConfig.votingPeriod, _genesisConfig.governanceName);
+        DeployerProxy(payable(address(_DEPLOYER_PROXY_CONTRACT))).initialize(_genesisConfig.deployers);
         // fill array with deployed smart contracts
         _deployedSystemContracts.push(address(_STAKING_CONTRACT));
         _deployedSystemContracts.push(address(_SLASHING_INDICATOR_CONTRACT));
@@ -182,6 +122,8 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         _deployedSystemContracts.push(address(_STAKING_POOL_CONTRACT));
         _deployedSystemContracts.push(address(_GOVERNANCE_CONTRACT));
         _deployedSystemContracts.push(address(_CHAIN_CONFIG_CONTRACT));
+        _deployedSystemContracts.push(address(_RUNTIME_UPGRADE_CONTRACT));
+        _deployedSystemContracts.push(address(_DEPLOYER_PROXY_CONTRACT));
     }
 
     function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes32 salt, bytes calldata data) external onlyFromGovernance virtual override {

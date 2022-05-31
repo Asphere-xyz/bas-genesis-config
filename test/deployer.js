@@ -25,7 +25,7 @@ contract("DeployerProxy", async (accounts) => {
   });
   it("disable/enable smart contract", async () => {
     const from = '0x0000000000000000000000000000000000000001';
-    const {deployer} = await newMockContract(from, {
+    const {deployer} = await newMockContract(owner, {
       genesisDeployers: [from],
     });
     const r1 = await deployer.registerDeployedContract(from, '0x0000000000000000000000000000000000000222');

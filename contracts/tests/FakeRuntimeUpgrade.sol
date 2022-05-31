@@ -29,4 +29,8 @@ contract FakeRuntimeUpgrade is RuntimeUpgrade {
     modifier onlyFromGovernance() override {
         _;
     }
+
+    modifier onlyBlockOne() override {
+        _;
+    }
 }

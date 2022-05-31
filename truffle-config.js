@@ -5,7 +5,7 @@ if (ENABLE_GAS_REPORTER) {
   Object.assign(mochaOptions, {
     reporterOptions: {
       showTimeSpent: true,
-      showMethodSig: true,
+      showMethodSig: true
     },
     reporter: 'eth-gas-reporter'
   })
@@ -19,7 +19,7 @@ module.exports = {
         optimizer: {
           enabled: true,
           runs: 100
-        },
+        }
       }
     }
   },
@@ -27,9 +27,9 @@ module.exports = {
     ganache: {
       host: "localhost",
       port: 7545,
-      network_id: "*", // Match any network id
+      network_id: "*",
       gas: 100_000_000
-    },
+    }
   },
   mocha: mochaOptions,
   plugins: [

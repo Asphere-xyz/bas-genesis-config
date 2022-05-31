@@ -11,6 +11,7 @@ const SystemReward = artifacts.require("SystemReward");
 const Governance = artifacts.require("Governance");
 const StakingPool = artifacts.require("StakingPool");
 const RuntimeUpgrade = artifacts.require("RuntimeUpgrade");
+const RuntimeProxy = artifacts.require("RuntimeProxy");
 const DeployerProxy = artifacts.require("DeployerProxy");
 const FakeStaking = artifacts.require("FakeStaking");
 const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
@@ -44,12 +45,6 @@ const DEFAULT_CONTRACT_TYPES = {
   DeployerProxy: DeployerProxy,
 };
 
-const createConstructorArgs = (types, args) => {
-  const params = AbiCoder.encodeParameters(types, args)
-  const sig = '0x' + keccak256(Buffer.from('ctor(' + types.join(',') + ')')).toString('hex').substring(0, 8)
-  return sig + params.substring(2)
-}
-
 const newContractUsingTypes = async (owner, params, types = {}) => {
   const {
     ChainConfig,
@@ -62,7 +57,6 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     DeployerProxy,
   } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
   let {
-    genesisDeployers,
     systemTreasury,
     activeValidatorsLength,
     epochBlockInterval,
@@ -73,25 +67,44 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     undelegatePeriod,
     minValidatorStakeAmount,
     minStakingAmount,
-    runtimeUpgradeEvmHook,
     votingPeriod,
+    genesisDeployers,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // convert single param to the object
   if (typeof systemTreasury === 'string') {
     systemTreasury = {[systemTreasury]: '10000'}
   }
   // precompute system contract addresses
-  const latestNonce = await web3.eth.getTransactionCount(owner)
+  const latestNonce = await web3.eth.getTransactionCount(owner, 'pending')
   const systemAddresses = []
   for (let i = 0; i < 8; i++) {
     const nonceHash = keccak256(RLP.encode([owner, latestNonce + i])).toString('hex');
     systemAddresses.push(toChecksumAddress(`0x${nonceHash.substring(24)}`));
   }
+  const runtimeUpgradeAddress = systemAddresses[6];
+  // encode constructor for injector
+  const injectorArgs = AbiCoder.encodeParameters(['address', 'address', 'address', 'address', 'address', 'address', 'address', 'address',], systemAddresses)
+  const injectorBytecode = ({bytecode}) => {
+    return bytecode + injectorArgs.substr(2)
+  }
   // factory system contracts (order is important)
-  const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses);
+  const staking = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Staking), '0x', {from: owner});
+  const slashingIndicator = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SlashingIndicator), '0x', {from: owner});
+  const systemReward = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SystemReward), '0x', {from: owner});
+  const stakingPool = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(StakingPool), '0x', {from: owner});
+  const governance = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Governance), '0x', {from: owner});
+  const chainConfig = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(ChainConfig), '0x', {from: owner});
+  const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses, {from: owner});
+  const deployerProxy = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(DeployerProxy), '0x', {from: owner});
+  // make sure runtime upgrade address is correct
+  if (runtimeUpgrade.address.toLowerCase() !== runtimeUpgradeAddress.toLowerCase()) {
+    console.log(`System addresses: ${JSON.stringify(systemAddresses, null, 2)}`)
+    throw new Error(`Runtime upgrade position mismatched, its not allowed (${runtimeUpgrade.address} != ${runtimeUpgradeAddress})`)
+  }
+  // save genesis config to the runtime upgrade
   await runtimeUpgrade.initialize({
     // staking
-    genesisValidators: genesisValidators,
+    validators: genesisValidators,
     initialStakes: genesisValidators.map(() => '0'),
     commissionRate: '0',
     // chain config
@@ -109,37 +122,23 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     // governance
     votingPeriod,
     governanceName: 'Governance',
+    // deployer proxy
+    deployers: genesisDeployers,
   });
-
-  const staking = await Staking.new(...systemAddresses);
-  const slashingIndicator = await SlashingIndicator.new(...systemAddresses);
-  const systemReward = await SystemReward.new(...systemAddresses);
-  const stakingPool = await StakingPool.new(...systemAddresses);
-  const governance = await Governance.new(...systemAddresses);
-  const chainConfig = await ChainConfig.new(...systemAddresses);
-  // const runtimeUpgrade = await RuntimeUpgrade.new(...[].concat(systemAddresses));
-  const deployerProxy = await DeployerProxy.new(...systemAddresses);
-  // initialize system contracts
-  await staking.initialize(genesisValidators, genesisValidators.map(() => '0'), '0');
-  await slashingIndicator.initialize();
-  await systemReward.initialize(Object.keys(systemTreasury), Object.values(systemTreasury));
-  await stakingPool.initialize();
-  await governance.initialize(votingPeriod, "Governance");
-  await chainConfig.initialize(activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount);
-  // await runtimeUpgrade.initialize(runtimeUpgradeEvmHook);
-  await deployerProxy.initialize(genesisDeployers);
+  // run consensus init
+  await runtimeUpgrade.init({from: owner});
   return {
-    staking,
-    parlia: staking,
-    slashingIndicator,
-    systemReward,
-    stakingPool,
-    governance,
-    chainConfig,
-    config: chainConfig,
-    // runtimeUpgrade,
-    deployer: deployerProxy,
-    deployerProxy,
+    staking: await Staking.at(staking.address),
+    parlia: await Staking.at(staking.address),
+    slashingIndicator: await SlashingIndicator.at(slashingIndicator.address),
+    systemReward: await SystemReward.at(systemReward.address),
+    stakingPool: await StakingPool.at(stakingPool.address),
+    governance: await Governance.at(governance.address),
+    chainConfig: await ChainConfig.at(chainConfig.address),
+    config: await ChainConfig.at(chainConfig.address),
+    runtimeUpgrade,
+    deployer: await DeployerProxy.at(deployerProxy.address),
+    deployerProxy: await DeployerProxy.at(deployerProxy.address),
   }
 }
 
@@ -188,14 +187,14 @@ const expectError = async (promise, text) => {
   assert.fail();
 }
 
-const extractTxCost = (executionResult) => {
+const extractTxCost = async (executionResult) => {
   let {receipt: {gasUsed, effectiveGasPrice}} = executionResult;
   if (typeof effectiveGasPrice === 'string') {
-    effectiveGasPrice = effectiveGasPrice.substring(2)
+    effectiveGasPrice = new BigNumber(effectiveGasPrice.substring(2), 16)
   } else {
-    effectiveGasPrice = '1' // for coverage
+    effectiveGasPrice = new BigNumber(await web3.eth.getGasPrice(), 10)
   }
-  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(new BigNumber(effectiveGasPrice, 16));
+  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(effectiveGasPrice);
   return executionResult;
 }
 
@@ -215,6 +214,5 @@ module.exports = {
   extractTxCost,
   waitForNextEpoch,
   advanceBlock,
-  createConstructorArgs,
   advanceBlocks,
 }
