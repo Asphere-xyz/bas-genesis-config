@@ -67,14 +67,14 @@ contract SystemReward is ISystemReward, InjectorContextHolder {
     }
 
     function _updateDistributionShare(address[] calldata accounts, uint16[] calldata shares) internal {
-        require(accounts.length == shares.length, "SystemReward: bad length");
+        require(accounts.length == shares.length, "bad length");
         // force claim system fee before changing distribution share
         _claimSystemFee();
         uint16 totalShares = 0;
         for (uint256 i = 0; i < accounts.length; i++) {
             address account = accounts[i];
             uint16 share = shares[i];
-            require(share >= SHARE_MIN_VALUE && share <= SHARE_MAX_VALUE, "SystemReward: bad share distribution");
+            require(share >= SHARE_MIN_VALUE && share <= SHARE_MAX_VALUE, "bad share distribution");
             if (i >= _distributionShares.length) {
                 _distributionShares.push(DistributionShare(account, share));
             } else {
@@ -83,7 +83,7 @@ contract SystemReward is ISystemReward, InjectorContextHolder {
             emit DistributionShareChanged(account, share);
             totalShares += share;
         }
-        require(totalShares == SHARE_MAX_VALUE, "SystemReward: bad share distribution");
+        require(totalShares == SHARE_MAX_VALUE, "bad share distribution");
         assembly {
             sstore(_distributionShares.slot, accounts.length)
         }

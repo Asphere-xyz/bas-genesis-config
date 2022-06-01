@@ -26,35 +26,27 @@ contract FakeDeployerProxy is DeployerProxy {
     ) {
     }
 
-    function addDeployer(address account) public override {
-        _addDeployer(account);
+    modifier onlyFromCoinbase() override {
+        _;
     }
 
-    function removeDeployer(address account) public override {
-        _removeDeployer(account);
+    modifier onlyFromSlashingIndicator() override {
+        _;
     }
 
-    function banDeployer(address account) public override {
-        _banDeployer(account);
+    modifier onlyFromGovernance() override {
+        _;
     }
 
-    function unbanDeployer(address account) public override {
-        _unbanDeployer(account);
+    modifier onlyFromRuntimeUpgrade() override {
+        _;
     }
 
-    function registerDeployedContract(address deployer, address impl) public override {
-        _registerDeployedContract(deployer, impl);
+    modifier onlyZeroGasPrice() override {
+        _;
     }
 
-    function checkContractActive(address impl) external view override {
-        _checkContractActive(impl);
-    }
-
-    function disableContract(address impl) public override {
-        _disableContract(impl);
-    }
-
-    function enableContract(address impl) public override {
-        _enableContract(impl);
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
     }
 }

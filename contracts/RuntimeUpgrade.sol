@@ -4,8 +4,6 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts/utils/Create2.sol";
 
-import "./libs/SlotUtils.sol";
-
 import "./InjectorContextHolder.sol";
 import "./RuntimeProxy.sol";
 
@@ -39,8 +37,8 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         deployerProxyContract
     ) {
     }
-    
-    function init() external onlyBlockOne override {
+
+    function init() external onlyBlock(1) override {
         // fill array with deployed smart contracts
         _deployedSystemContracts.push(address(_STAKING_CONTRACT));
         _deployedSystemContracts.push(address(_SLASHING_INDICATOR_CONTRACT));
@@ -55,7 +53,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes32 salt, bytes calldata data) external onlyFromGovernance virtual override {
         // make sure that we're upgrading existing smart contract that already has implementation
         RuntimeProxy proxy = RuntimeProxy(account);
-        require(proxy.getCurrentVersion() != address(0x00), "RuntimeUpgrade: implementation not found");
+        require(proxy.implementation() != address(0x00), "RuntimeUpgrade: implementation not found");
         // we allow to upgrade only system smart contracts
         require(_isSystemSmartContract(account), "RuntimeUpgrade: only system smart contract");
         // upgrade system contract
@@ -66,7 +64,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     function deploySystemSmartContract(address payable account, bytes calldata bytecode, bytes32 salt, bytes calldata data) external onlyFromGovernance virtual override {
         // make sure that we're upgrading existing smart contract that already has implementation
         RuntimeProxy proxy = RuntimeProxy(account);
-        require(proxy.getCurrentVersion() == address(0x00), "RuntimeUpgrade: already deployed");
+        require(proxy.implementation() == address(0x00), "RuntimeUpgrade: already deployed");
         // we allow to upgrade only system smart contracts
         require(!_isSystemSmartContract(account), "RuntimeUpgrade: already deployed");
         // upgrade system contract

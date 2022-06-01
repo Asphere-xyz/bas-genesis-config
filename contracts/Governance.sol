@@ -69,7 +69,7 @@ contract Governance is InjectorContextHolder, GovernorCountingSimpleUpgradeable,
 
     modifier onlyValidatorOwner(address account) {
         address validatorAddress = _STAKING_CONTRACT.getValidatorByOwner(account);
-        require(_STAKING_CONTRACT.isValidatorActive(validatorAddress), "Governance: only validator owner");
+        require(_STAKING_CONTRACT.isValidatorActive(validatorAddress), "only validator owner");
         _;
     }
 

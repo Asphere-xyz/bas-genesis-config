@@ -26,23 +26,27 @@ contract FakeSystemReward is SystemReward {
     ) {
     }
 
-    modifier onlyFromCoinbase() virtual override {
+    modifier onlyFromCoinbase() override {
         _;
     }
 
-    modifier onlyFromSlashingIndicator() virtual override {
+    modifier onlyFromSlashingIndicator() override {
         _;
     }
 
-    modifier onlyFromGovernance() virtual override {
+    modifier onlyFromGovernance() override {
         _;
     }
 
-    modifier onlyFromRuntimeUpgrade() virtual override {
+    modifier onlyFromRuntimeUpgrade() override {
         _;
     }
 
-    modifier onlyZeroGasPrice() virtual override {
+    modifier onlyZeroGasPrice() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
         _;
     }
 }

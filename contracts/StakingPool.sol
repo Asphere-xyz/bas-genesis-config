@@ -142,18 +142,17 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
 
     function unstake(address validator, uint256 amount) external advanceStakingRewards(validator) override {
         ValidatorPool memory validatorPool = _getValidatorPool(validator);
-        require(validatorPool.totalStakedAmount > 0, "StakingPool: nothing to unstake");
+        require(validatorPool.totalStakedAmount > 0, "nothing to unstake");
         // make sure user doesn't have pending undelegates (we don't support it here)
-        require(_pendingUnstakes[validator][msg.sender].epoch == 0, "StakingPool: undelegate pending");
+        require(_pendingUnstakes[validator][msg.sender].epoch == 0, "undelegate pending");
         // calculate shares and make sure user have enough balance
         uint256 shares = amount * _calcRatio(validatorPool) / 1e18;
-        require(shares <= _stakerShares[validator][msg.sender], "StakingPool: not enough shares");
+        require(shares <= _stakerShares[validator][msg.sender], "not enough shares");
         // save new undelegate
-        IChainConfig chainConfig = IInjector(address(_STAKING_CONTRACT)).getChainConfig();
         _pendingUnstakes[validator][msg.sender] = PendingUnstake({
         amount : amount,
         shares : shares,
-        epoch : _STAKING_CONTRACT.nextEpoch() + chainConfig.getUndelegatePeriod()
+        epoch : _STAKING_CONTRACT.nextEpoch() + _CHAIN_CONFIG_CONTRACT.getUndelegatePeriod()
         });
         validatorPool.pendingUnstake += amount;
         _validatorPools[validator] = validatorPool;
@@ -174,8 +173,8 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         // claim undelegate rewards
         _STAKING_CONTRACT.claimPendingUndelegates(validator);
         // make sure user have pending unstake
-        require(pendingUnstake.epoch > 0, "StakingPool: nothing to claim");
-        require(pendingUnstake.epoch <= _STAKING_CONTRACT.currentEpoch(), "StakingPool: not ready");
+        require(pendingUnstake.epoch > 0, "nothing to claim");
+        require(pendingUnstake.epoch <= _STAKING_CONTRACT.currentEpoch(), "not ready");
         // updates shares and validator pool params
         _stakerShares[validator][msg.sender] -= shares;
         ValidatorPool memory validatorPool = _getValidatorPool(validator);
@@ -186,13 +185,13 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         // remove pending claim
         delete _pendingUnstakes[validator][msg.sender];
         // its safe to use call here (state is clear)
-        require(address(this).balance >= amount, "StakingPool: not enough balance");
+        require(address(this).balance >= amount, "not enough balance");
         payable(address(msg.sender)).transfer(amount);
         // emit event
         emit Claim(validator, msg.sender, amount);
     }
 
     receive() external payable {
-        require(address(msg.sender) == address(_STAKING_CONTRACT), "StakingPool: not a staking contract");
+        require(address(msg.sender) == address(_STAKING_CONTRACT), "not a staking contract");
     }
 }

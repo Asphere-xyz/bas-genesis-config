@@ -4,6 +4,7 @@ const {keccak256, toChecksumAddress} = require('ethereumjs-util');
 const AbiCoder = require('web3-eth-abi');
 const RLP = require('rlp');
 
+const InjectorContextHolder = artifacts.require("InjectorContextHolder");
 const ChainConfig = artifacts.require("ChainConfig");
 const Staking = artifacts.require("Staking");
 const SlashingIndicator = artifacts.require("SlashingIndicator");
@@ -13,9 +14,14 @@ const StakingPool = artifacts.require("StakingPool");
 const RuntimeUpgrade = artifacts.require("RuntimeUpgrade");
 const RuntimeProxy = artifacts.require("RuntimeProxy");
 const DeployerProxy = artifacts.require("DeployerProxy");
-const FakeStaking = artifacts.require("FakeStaking");
+
+const FakeChainConfig = artifacts.require("FakeChainConfig");
 const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
+const FakeGovernance = artifacts.require("FakeGovernance");
 const FakeRuntimeUpgrade = artifacts.require("FakeRuntimeUpgrade");
+const FakeSlashingIndicator = artifacts.require("FakeSlashingIndicator");
+const FakeStaking = artifacts.require("FakeStaking");
+const FakeStakingPool = artifacts.require("FakeStakingPool");
 const FakeSystemReward = artifacts.require("FakeSystemReward");
 
 const DEFAULT_MOCK_PARAMS = {
@@ -109,13 +115,13 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   }
   // run consensus init
   await runtimeUpgrade.init({from: owner});
-  await staking.init({from: owner});
-  await slashingIndicator.init({from: owner});
-  await systemReward.init({from: owner});
-  await stakingPool.init({from: owner});
-  await governance.init({from: owner});
-  await chainConfig.init({from: owner});
-  await deployerProxy.init({from: owner});
+  await (await InjectorContextHolder.at(staking.address)).init();
+  await (await InjectorContextHolder.at(slashingIndicator.address)).init({from: owner});
+  await (await InjectorContextHolder.at(systemReward.address)).init({from: owner});
+  await (await InjectorContextHolder.at(stakingPool.address)).init({from: owner});
+  await (await InjectorContextHolder.at(governance.address)).init({from: owner});
+  await (await InjectorContextHolder.at(chainConfig.address)).init({from: owner});
+  await (await InjectorContextHolder.at(deployerProxy.address)).init({from: owner});
   // map proxies to the correct ABIs
   return {
     staking: await Staking.at(staking.address),
@@ -134,9 +140,13 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
 
 const newMockContract = async (owner, params = {}) => {
   return newContractUsingTypes(owner, params, {
-    Staking: FakeStaking,
-    RuntimeUpgrade: FakeRuntimeUpgrade,
+    ChainConfig: FakeChainConfig,
     DeployerProxy: FakeDeployerProxy,
+    Governance: FakeGovernance,
+    RuntimeUpgrade: FakeRuntimeUpgrade,
+    SlashingIndicator: FakeSlashingIndicator,
+    Staking: FakeStaking,
+    StakingPool: FakeStakingPool,
     SystemReward: FakeSystemReward,
   });
 }

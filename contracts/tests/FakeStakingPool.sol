@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "../Staking.sol";
+import "../StakingPool.sol";
 
-contract FakeStaking is Staking {
+contract FakeStakingPool is StakingPool {
 
     constructor(
         IStaking stakingContract,
@@ -14,7 +14,7 @@ contract FakeStaking is Staking {
         IChainConfig chainConfigContract,
         IRuntimeUpgrade runtimeUpgradeContract,
         IDeployerProxy deployerProxyContract
-    ) Staking(
+    ) StakingPool(
         stakingContract,
         slashingIndicatorContract,
         systemRewardContract,

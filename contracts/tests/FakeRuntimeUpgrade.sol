@@ -26,11 +26,27 @@ contract FakeRuntimeUpgrade is RuntimeUpgrade {
     ) {
     }
 
+    modifier onlyFromCoinbase() override {
+        _;
+    }
+
+    modifier onlyFromSlashingIndicator() override {
+        _;
+    }
+
     modifier onlyFromGovernance() override {
         _;
     }
 
-    modifier onlyBlockOne() override {
+    modifier onlyFromRuntimeUpgrade() override {
+        _;
+    }
+
+    modifier onlyZeroGasPrice() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
         _;
     }
 }

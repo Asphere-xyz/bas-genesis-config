@@ -30,10 +30,22 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
     IRuntimeUpgrade internal immutable _RUNTIME_UPGRADE_CONTRACT;
     IDeployerProxy internal immutable _DEPLOYER_PROXY_CONTRACT;
 
+    // delayed initializer input data (only for parlia mode)
+    bytes internal _delayedInitializer;
+
     // already used fields
     uint256[_SKIP_OFFSET] private __removed;
-    // reserved (1 for init)
-    uint256[_LAYOUT_OFFSET - _SKIP_OFFSET - 1] private __reserved;
+    // reserved (2 for init and initializer)
+    uint256[_LAYOUT_OFFSET - _SKIP_OFFSET - 2] private __reserved;
+
+    error OnlyCoinbase();
+    error OnlySlashingIndicator();
+    error OnlyGovernance();
+    error OnlyRuntimeUpgrade();
+    error OnlyZeroGasPrice();
+    error OnlyBlock(uint64 blockNumber);
+    error OnlyGenesisBlock();
+    error OnlyBlockOne();
 
     constructor(
         IStaking stakingContract,
@@ -55,37 +67,51 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
         _DEPLOYER_PROXY_CONTRACT = deployerProxyContract;
     }
 
-    function init() external onlyBlockOne virtual {
-        // if you use proxy setup then this function call is handled by proxy
+    function useDelayedInitializer(bytes memory delayedInitializer) external onlyBlock(0) {
+        _delayedInitializer = delayedInitializer;
+    }
+
+    function init() external onlyBlock(1) virtual {
+        if (_delayedInitializer.length > 0) {
+            (bool success, bytes memory returnData) = address(this).delegatecall(_delayedInitializer);
+            if (success) return;
+            if (returnData.length > 0) {
+                assembly {
+                    revert(add(32, returnData), mload(returnData))
+                }
+            } else {
+                revert("call of init() failed");
+            }
+        }
     }
 
     modifier onlyFromCoinbase() virtual {
-        require(msg.sender == block.coinbase, "InjectorContextHolder: only coinbase");
+        if (msg.sender != block.coinbase) revert OnlyCoinbase();
         _;
     }
 
     modifier onlyFromSlashingIndicator() virtual {
-        require(msg.sender == address(_SLASHING_INDICATOR_CONTRACT), "InjectorContextHolder: only slashing indicator");
+        if (ISlashingIndicator(msg.sender) != _SLASHING_INDICATOR_CONTRACT) revert OnlySlashingIndicator();
         _;
     }
 
     modifier onlyFromGovernance() virtual {
-        require(IGovernance(msg.sender) == _GOVERNANCE_CONTRACT, "InjectorContextHolder: only governance");
+        if (IGovernance(msg.sender) != _GOVERNANCE_CONTRACT) revert OnlyGovernance();
         _;
     }
 
     modifier onlyFromRuntimeUpgrade() virtual {
-        require(IRuntimeUpgrade(msg.sender) == _RUNTIME_UPGRADE_CONTRACT, "InjectorContextHolder: only runtime upgrade");
+        if (IRuntimeUpgrade(msg.sender) != _RUNTIME_UPGRADE_CONTRACT) revert OnlyRuntimeUpgrade();
         _;
     }
 
     modifier onlyZeroGasPrice() virtual {
-        require(tx.gasprice == 0, "InjectorContextHolder: only zero gas price");
+        if (tx.gasprice != 0) revert OnlyZeroGasPrice();
         _;
     }
 
-    modifier onlyBlockOne() virtual {
-        require(block.number == 1, "InjectorContextHolder: only block one");
+    modifier onlyBlock(uint64 blockNumber) virtual {
+        if (block.number != blockNumber) revert OnlyBlock(blockNumber);
         _;
     }
 
