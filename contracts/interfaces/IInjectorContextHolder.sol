@@ -9,9 +9,11 @@ import "./IDeployerProxy.sol";
 import "./IStakingPool.sol";
 import "./IChainConfig.sol";
 
-interface IInjector {
+interface IInjectorContextHolder {
 
     function useDelayedInitializer(bytes memory delayedInitializer) external;
 
     function init() external;
+
+    function isInitialized() external view returns (bool);
 }

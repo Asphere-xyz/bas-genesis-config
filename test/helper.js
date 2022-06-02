@@ -36,7 +36,6 @@ const DEFAULT_MOCK_PARAMS = {
   minStakingAmount: '1000000000000000000',
   genesisValidators: [],
   genesisDeployers: [],
-  runtimeUpgradeEvmHook: '0x0000000000000000000000000000000000000000',
   votingPeriod: '2',
 };
 

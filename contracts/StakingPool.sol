@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "./interfaces/IInjectorContextHolder.sol";
 import "./interfaces/IStaking.sol";
 import "./interfaces/IStakingPool.sol";
-import "./interfaces/IInjector.sol";
 
 import "./InjectorContextHolder.sol";
 import "./Staking.sol";
 
 contract StakingPool is InjectorContextHolder, IStakingPool {
-
-    /**
-     * This value must the same as in Staking smart contract
-     */
-    uint256 internal constant BALANCE_COMPACT_PRECISION = 1e10;
 
     event Stake(address indexed validator, address indexed staker, uint256 amount);
     event Unstake(address indexed validator, address indexed staker, uint256 amount);

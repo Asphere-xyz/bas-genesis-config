@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/utils/StorageSlot.sol";
 
 import "./interfaces/IChainConfig.sol";
 import "./interfaces/IGovernance.sol";
@@ -11,10 +12,10 @@ import "./interfaces/IValidatorSet.sol";
 import "./interfaces/IStaking.sol";
 import "./interfaces/IRuntimeUpgrade.sol";
 import "./interfaces/IStakingPool.sol";
-import "./interfaces/IInjector.sol";
+import "./interfaces/IInjectorContextHolder.sol";
 import "./interfaces/IDeployerProxy.sol";
 
-abstract contract InjectorContextHolder is Initializable, IInjector {
+abstract contract InjectorContextHolder is Initializable, IInjectorContextHolder {
 
     // default layout offset, it means that all inherited smart contract's storage layout must start from 100
     uint256 internal constant _LAYOUT_OFFSET = 100;
@@ -38,7 +39,7 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
     // reserved (2 for init and initializer)
     uint256[_LAYOUT_OFFSET - _SKIP_OFFSET - 2] private __reserved;
 
-    error OnlyCoinbase();
+    error OnlyCoinbase(address coinbase);
     error OnlySlashingIndicator();
     error OnlyGovernance();
     error OnlyRuntimeUpgrade();
@@ -85,8 +86,14 @@ abstract contract InjectorContextHolder is Initializable, IInjector {
         }
     }
 
+    function isInitialized() public view override returns (bool) {
+        // openzeppelin's class "Initializable" doesnt expose any methods for fetching initialisation status
+        StorageSlot.Uint256Slot storage initializedSlot = StorageSlot.getUint256Slot(bytes32(0x0000000000000000000000000000000000000000000000000000000000000001));
+        return initializedSlot.value > 0;
+    }
+
     modifier onlyFromCoinbase() virtual {
-        if (msg.sender != block.coinbase) revert OnlyCoinbase();
+        if (msg.sender != block.coinbase) revert OnlyCoinbase(block.coinbase);
         _;
     }
 

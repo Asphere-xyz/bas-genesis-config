@@ -9,8 +9,8 @@ import "./RuntimeProxy.sol";
 
 contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
-    event Upgraded(address contractAddress, bytes newByteCode);
-    event Deployed(address contractAddress, bytes newByteCode);
+    event Upgraded(address account, address impl, bytes bytecode);
+    event Deployed(address account, address impl, bytes bytecode);
 
     // address of the EVM hook (not in use anymore)
     address internal _evmHookAddress;
@@ -38,42 +38,58 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     ) {
     }
 
-    function init() external onlyBlock(1) override {
-        // fill array with deployed smart contracts
-        _deployedSystemContracts.push(address(_STAKING_CONTRACT));
-        _deployedSystemContracts.push(address(_SLASHING_INDICATOR_CONTRACT));
-        _deployedSystemContracts.push(address(_SYSTEM_REWARD_CONTRACT));
-        _deployedSystemContracts.push(address(_STAKING_POOL_CONTRACT));
-        _deployedSystemContracts.push(address(_GOVERNANCE_CONTRACT));
-        _deployedSystemContracts.push(address(_CHAIN_CONFIG_CONTRACT));
-        _deployedSystemContracts.push(address(_RUNTIME_UPGRADE_CONTRACT));
-        _deployedSystemContracts.push(address(_DEPLOYER_PROXY_CONTRACT));
-    }
-
-    function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes32 salt, bytes calldata data) external onlyFromGovernance virtual override {
+    function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external onlyFromGovernance virtual override {
         // make sure that we're upgrading existing smart contract that already has implementation
         RuntimeProxy proxy = RuntimeProxy(account);
         require(proxy.implementation() != address(0x00), "RuntimeUpgrade: implementation not found");
         // we allow to upgrade only system smart contracts
         require(_isSystemSmartContract(account), "RuntimeUpgrade: only system smart contract");
         // upgrade system contract
-        address impl = Create2.deploy(0, salt, bytecode);
-        proxy.upgradeToAndCall(impl, data);
+        address impl = Create2.deploy(0, 0x0000000000000000000000000000000000000000000000000000000000000000, bytecode);
+        if (data.length > 0) {
+            proxy.upgradeToAndCall(impl, data);
+        } else {
+            proxy.upgradeTo(impl);
+        }
+        // emit event
+        emit Upgraded(account, impl, bytecode);
     }
 
-    function deploySystemSmartContract(address payable account, bytes calldata bytecode, bytes32 salt, bytes calldata data) external onlyFromGovernance virtual override {
+    function deploySystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external onlyFromGovernance virtual override {
         // make sure that we're upgrading existing smart contract that already has implementation
         RuntimeProxy proxy = RuntimeProxy(account);
         require(proxy.implementation() == address(0x00), "RuntimeUpgrade: already deployed");
         // we allow to upgrade only system smart contracts
         require(!_isSystemSmartContract(account), "RuntimeUpgrade: already deployed");
+        _deployedSystemContracts.push(account);
         // upgrade system contract
-        address impl = Create2.deploy(0, salt, bytecode);
-        proxy.upgradeToAndCall(impl, data);
+        address impl = Create2.deploy(0, 0x0000000000000000000000000000000000000000000000000000000000000000, bytecode);
+        if (data.length > 0) {
+            proxy.upgradeToAndCall(impl, data);
+        } else {
+            proxy.upgradeTo(impl);
+        }
+        // emit event
+        emit Deployed(account, impl, bytecode);
     }
 
     function getSystemContracts() public view returns (address[] memory) {
-        return _deployedSystemContracts;
+        address[] memory result = new address[](8 + _deployedSystemContracts.length);
+        // BSC-compatible
+        result[0] = address(_STAKING_CONTRACT);
+        result[1] = address(_SLASHING_INDICATOR_CONTRACT);
+        result[2] = address(_SYSTEM_REWARD_CONTRACT);
+        // BAS-defined
+        result[3] = address(_STAKING_POOL_CONTRACT);
+        result[4] = address(_GOVERNANCE_CONTRACT);
+        result[5] = address(_CHAIN_CONFIG_CONTRACT);
+        result[6] = address(_RUNTIME_UPGRADE_CONTRACT);
+        result[7] = address(_DEPLOYER_PROXY_CONTRACT);
+        // copy deployed system smart contracts
+        for (uint256 i = 0; i < _deployedSystemContracts.length; i++) {
+            result[8 + i] = _deployedSystemContracts[i];
+        }
+        return result;
     }
 
     function _isSystemSmartContract(address contractAddress) internal view returns (bool) {
