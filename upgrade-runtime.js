@@ -141,12 +141,15 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
   if (!someValidator) {
     throw new Error(`There is no validators in the network, its not possible`)
   }
-  const upgradeSystemContractByteCode = async (contractAddress) => {
+  const upgradeSystemContractByteCode = async (contractAddress, defaultByteCode = []) => {
     if (!Array.isArray(contractAddress)) {
       contractAddress = [contractAddress]
     }
-    const [addresses, values, calls] = contractAddress.reduce(([addresses, values, calls], address) => {
-      const byteCode = readByteCodeForAddress(address),
+    if (!Array.isArray(defaultByteCode)) {
+      defaultByteCode = [defaultByteCode]
+    }
+    const [addresses, values, calls] = contractAddress.reduce(([addresses, values, calls], address, i) => {
+      const byteCode = defaultByteCode[i] || readByteCodeForAddress(address),
         call = runtimeUpgrade.methods.upgradeSystemSmartContract(address, injectorBytecode(byteCode), '0x').encodeABI()
       addresses.push(RUNTIME_UPGRADE_ADDRESS);
       values.push('0');
@@ -155,7 +158,21 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
     }, [[], [], []]);
     let governanceCall;
     const desc = `Runtime upgrade for (${contractAddress.join(',')}, at ${new Date().toLocaleString()})`;
-    governanceCall = governance.methods.proposeWithCustomVotingPeriod(addresses, values, calls, desc, '10').encodeABI()
+    for (const i in calls) {
+      console.log(`Testing call... from=${GOVERNANCE_ADDRESS} to=${addresses[i]}`);
+      try {
+        await web3.eth.call({
+          value: values[i],
+          from: GOVERNANCE_ADDRESS,
+          to: addresses[i],
+          data: calls[i],
+        });
+      } catch (e) {
+        const yesNo = await askFor(`It seems runtime upgrade might fail with error (${e.message}), would you like to continue? (yes/no) `);
+        if (yesNo !== 'yes') return;
+      }
+    }
+    governanceCall = governance.methods.proposeWithCustomVotingPeriod(addresses, values, calls, desc, '20').encodeABI()
     const {rawTransaction, transactionHash} = await signTx(someValidator, {
       to: GOVERNANCE_ADDRESS,
       data: governanceCall,
@@ -232,6 +249,29 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
       await sleepFor(12_000)
     }
   }
+  // upgrade EVM hooks to the EIP-1967
+  const isEIP1967 = async () => {
+    try {
+      return await runtimeUpgrade.methods.isEIP1967().call();
+    } catch (e) {
+      console.error(e)
+    }
+    return false;
+  }
+  const isNewRuntimeUpgrade = await isEIP1967();
+  console.log(`isEIP1967: ${isNewRuntimeUpgrade}`);
+  if (!isNewRuntimeUpgrade) {
+    const existingRuntimeUpgradeCode = await web3.eth.getCode(RUNTIME_UPGRADE_ADDRESS)
+    const yesOrNo = await askFor('It seems you\'re running EVM hook BAS version, it must be upgraded to the latest? (yes/no) ')
+    if (yesOrNo !== 'yes') return;
+    const runtimeUpgradeConstructor = injectorBytecode(readByteCodeForAddress(RUNTIME_UPGRADE_ADDRESS))
+    const runtimeUpgradeBytecode = await web3.eth.call({
+      data: runtimeUpgradeConstructor,
+    });
+    await upgradeSystemContractByteCode(RUNTIME_UPGRADE_ADDRESS, runtimeUpgradeBytecode);
+    console.log(`Runtime upgrade is upgraded, now you can re-run this command to upgrade smart contracts to the latest version.`);
+    process.exit(0);
+  }
   // create new runtime upgrade proposal
   let contractAddress;
   if (isAuto) {
@@ -240,7 +280,7 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
     contractAddress = await askFor('What address you\'d like to upgrade? (use "auto" for auto mode) ')
   }
   if (contractAddress === 'auto') {
-    console.log(`Upgrading smart contract: ${UPGRADABLE_ADDRESSES}`);
+    console.log(`Upgrading smart contract(s): ${UPGRADABLE_ADDRESSES}`);
     console.log(`---------------------------`);
     await upgradeSystemContractByteCode(UPGRADABLE_ADDRESSES.slice(0, 1))
     await upgradeSystemContractByteCode(UPGRADABLE_ADDRESSES.slice(1, 4))

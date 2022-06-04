@@ -9,6 +9,8 @@ import "./RuntimeProxy.sol";
 
 contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
 
+    bytes32 constant internal _DEPLOYMENT_SALT = 0x0000000000000000000000000000000000000000000000000000000000000000;
+
     event Upgraded(address account, address impl, bytes bytecode);
     event Deployed(address account, address impl, bytes bytecode);
 
@@ -38,14 +40,18 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     ) {
     }
 
-    function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external onlyFromGovernance virtual override {
+    function isEIP1967() external pure returns (bool) {
+        return true;
+    }
+
+    function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external payable onlyFromGovernance virtual override {
         // make sure that we're upgrading existing smart contract that already has implementation
         RuntimeProxy proxy = RuntimeProxy(account);
         require(proxy.implementation() != address(0x00), "RuntimeUpgrade: implementation not found");
         // we allow to upgrade only system smart contracts
         require(_isSystemSmartContract(account), "RuntimeUpgrade: only system smart contract");
         // upgrade system contract
-        address impl = Create2.deploy(0, 0x0000000000000000000000000000000000000000000000000000000000000000, bytecode);
+        address impl = Create2.deploy(msg.value, _DEPLOYMENT_SALT, bytecode);
         if (data.length > 0) {
             proxy.upgradeToAndCall(impl, data);
         } else {
@@ -55,7 +61,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         emit Upgraded(account, impl, bytecode);
     }
 
-    function deploySystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external onlyFromGovernance virtual override {
+    function deploySystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external payable onlyFromGovernance virtual override {
         // make sure that we're upgrading existing smart contract that already has implementation
         RuntimeProxy proxy = RuntimeProxy(account);
         require(proxy.implementation() == address(0x00), "RuntimeUpgrade: already deployed");
@@ -63,7 +69,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
         require(!_isSystemSmartContract(account), "RuntimeUpgrade: already deployed");
         _deployedSystemContracts.push(account);
         // upgrade system contract
-        address impl = Create2.deploy(0, 0x0000000000000000000000000000000000000000000000000000000000000000, bytecode);
+        address impl = Create2.deploy(msg.value, _DEPLOYMENT_SALT, bytecode);
         if (data.length > 0) {
             proxy.upgradeToAndCall(impl, data);
         } else {

@@ -640,7 +640,7 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function _disableValidator(address validatorAddress) internal {
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(_validatorsMap[validatorAddress].status == ValidatorStatus.Active, "not active validator");
+        require(validator.status == ValidatorStatus.Active || validator.status == ValidatorStatus.Jail, "not active validator");
         _removeValidatorFromActiveList(validatorAddress);
         validator.status = ValidatorStatus.Pending;
         _validatorsMap[validatorAddress] = validator;
