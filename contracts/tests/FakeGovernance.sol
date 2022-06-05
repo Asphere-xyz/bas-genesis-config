@@ -38,14 +38,6 @@ contract FakeGovernance is Governance {
         _;
     }
 
-    modifier onlyFromRuntimeUpgrade() override {
-        _;
-    }
-
-    modifier onlyZeroGasPrice() override {
-        _;
-    }
-
     modifier onlyBlock(uint64 /*blockNumber*/) override {
         _;
     }

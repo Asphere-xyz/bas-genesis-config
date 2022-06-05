@@ -218,10 +218,10 @@ contract Staking is InjectorContextHolder, IStaking {
     function releaseValidatorFromJail(address validatorAddress) external override {
         // make sure validator is in jail
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status == ValidatorStatus.Jail, "validator not in jail");
+        require(validator.status == ValidatorStatus.Jail, "bad status");
         // only validator owner
-        require(msg.sender == validator.ownerAddress, "only validator owner");
-        require(_currentEpoch() >= validator.jailedBefore, "still in jail");
+        require(msg.sender == validator.ownerAddress, "only owner");
+        require(currentEpoch() >= validator.jailedBefore, "still in jail");
         // release validator from jail
         _releaseValidatorFromJail(validator);
     }
@@ -229,7 +229,7 @@ contract Staking is InjectorContextHolder, IStaking {
     function forceUnJailValidator(address validatorAddress) external onlyFromGovernance {
         // make sure validator is in jail
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status == ValidatorStatus.Jail, "validator not in jail");
+        require(validator.status == ValidatorStatus.Jail, "bad status");
         // release validator from jail
         _releaseValidatorFromJail(validator);
     }
@@ -242,12 +242,7 @@ contract Staking is InjectorContextHolder, IStaking {
         _validatorsMap[validatorAddress] = validator;
         _activeValidatorsList.push(validatorAddress);
         // emit event
-        emit ValidatorReleased(validatorAddress, _currentEpoch());
-    }
-
-    function _totalDelegatedToValidator(Validator memory validator) internal view returns (uint256) {
-        ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
-        return uint256(snapshot.totalDelegated) * BALANCE_COMPACT_PRECISION;
+        emit ValidatorReleased(validatorAddress, currentEpoch());
     }
 
     function delegate(address validatorAddress) payable external override {
@@ -258,20 +253,12 @@ contract Staking is InjectorContextHolder, IStaking {
         _undelegateFrom(msg.sender, validatorAddress, amount);
     }
 
-    function currentEpoch() external view returns (uint64) {
-        return _currentEpoch();
+    function currentEpoch() public view returns (uint64) {
+        return uint64(block.number / _CHAIN_CONFIG_CONTRACT.getEpochBlockInterval());
     }
 
-    function nextEpoch() external view returns (uint64) {
-        return _nextEpoch();
-    }
-
-    function _currentEpoch() internal view returns (uint64) {
-        return uint64(block.number / _CHAIN_CONFIG_CONTRACT.getEpochBlockInterval() + 0);
-    }
-
-    function _nextEpoch() internal view returns (uint64) {
-        return _currentEpoch() + 1;
+    function nextEpoch() public view returns (uint64) {
+        return currentEpoch() + 1;
     }
 
     function _touchValidatorSnapshot(Validator memory validator, uint64 epoch) internal returns (ValidatorSnapshot storage) {
@@ -310,13 +297,13 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // check is minimum delegate amount
-        require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "amount is too low");
-        require(amount % BALANCE_COMPACT_PRECISION == 0, "amount have a remainder");
+        require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "too low");
+        require(amount % BALANCE_COMPACT_PRECISION == 0, "no remainder");
         // make sure amount is greater than min staking amount
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[toValidator];
-        require(validator.status != ValidatorStatus.NotFound, "validator not found");
-        uint64 atEpoch = _nextEpoch();
+        require(validator.status != ValidatorStatus.NotFound, "not found");
+        uint64 atEpoch = nextEpoch();
         // Lets upgrade next snapshot parameters:
         // + find snapshot for the next epoch after current block
         // + increase total delegated amount in the next epoch for this validator
@@ -347,11 +334,11 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
         // check minimum delegate amount
-        require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "amount is too low");
-        require(amount % BALANCE_COMPACT_PRECISION == 0, "amount have a remainder");
+        require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "too low");
+        require(amount % BALANCE_COMPACT_PRECISION == 0, "no remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
-        uint64 beforeEpoch = _nextEpoch();
+        uint64 beforeEpoch = nextEpoch();
         // Lets upgrade next snapshot parameters:
         // + find snapshot for the next epoch after current block
         // + increase total delegated amount in the next epoch for this validator
@@ -364,7 +351,7 @@ contract Staking is InjectorContextHolder, IStaking {
         // staked amount because it can't affect current validator set, but otherwise we must create
         // new record in delegation queue with the last epoch (delegations are ordered by epoch)
         ValidatorDelegation storage delegation = _validatorDelegations[fromValidator][toDelegator];
-        require(delegation.delegateQueue.length > 0, "delegation queue is empty");
+        require(delegation.delegateQueue.length > 0, "insufficient balance");
         DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
         require(recentDelegateOp.amount >= uint64(amount / BALANCE_COMPACT_PRECISION), "insufficient balance");
         uint112 nextDelegatedAmount = recentDelegateOp.amount - uint112(amount / BALANCE_COMPACT_PRECISION);
@@ -549,29 +536,29 @@ contract Staking is InjectorContextHolder, IStaking {
     function registerValidator(address validatorAddress, uint16 commissionRate) payable external override {
         uint256 initialStake = msg.value;
         // // initial stake amount should be greater than minimum validator staking amount
-        require(initialStake >= _CHAIN_CONFIG_CONTRACT.getMinValidatorStakeAmount(), "initial stake is too low");
-        require(initialStake % BALANCE_COMPACT_PRECISION == 0, "amount have a remainder");
+        require(initialStake >= _CHAIN_CONFIG_CONTRACT.getMinValidatorStakeAmount(), "too low");
+        require(initialStake % BALANCE_COMPACT_PRECISION == 0, "no remainder");
         // add new validator as pending
-        _addValidator(validatorAddress, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, _nextEpoch());
+        _addValidator(validatorAddress, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, nextEpoch());
     }
 
     function addValidator(address account) external onlyFromGovernance virtual override {
-        _addValidator(account, account, ValidatorStatus.Active, 0, 0, _nextEpoch());
+        _addValidator(account, account, ValidatorStatus.Active, 0, 0, nextEpoch());
     }
 
     function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint256 initialStake, uint64 sinceEpoch) internal {
         // validator commission rate
-        require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "bad commission rate");
+        require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "bad commission");
         // init validator default params
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(_validatorsMap[validatorAddress].status == ValidatorStatus.NotFound, "validator already exist");
+        require(_validatorsMap[validatorAddress].status == ValidatorStatus.NotFound, "already exist");
         validator.validatorAddress = validatorAddress;
         validator.ownerAddress = validatorOwner;
         validator.status = status;
         validator.changedAt = sinceEpoch;
         _validatorsMap[validatorAddress] = validator;
         // save validator owner
-        require(_validatorOwners[validatorOwner] == address(0x00), "owner already in use");
+        require(_validatorOwners[validatorOwner] == address(0x00), "owner in use");
         _validatorOwners[validatorOwner] = validatorAddress;
         // add new validator to array
         if (status == ValidatorStatus.Active) {
@@ -581,14 +568,23 @@ contract Staking is InjectorContextHolder, IStaking {
         _validatorSnapshots[validatorAddress][sinceEpoch] = ValidatorSnapshot(0, uint112(initialStake / BALANCE_COMPACT_PRECISION), 0, commissionRate);
         // delegate initial stake to validator owner
         ValidatorDelegation storage delegation = _validatorDelegations[validatorAddress][validatorOwner];
-        require(delegation.delegateQueue.length == 0, "delegation queue is not empty");
+        require(delegation.delegateQueue.length == 0);
         delegation.delegateQueue.push(DelegationOpDelegate(uint112(initialStake / BALANCE_COMPACT_PRECISION), sinceEpoch));
+        emit Delegated(validatorAddress, validatorOwner, initialStake, sinceEpoch);
         // emit event
         emit ValidatorAdded(validatorAddress, validatorOwner, uint8(status), commissionRate);
     }
 
     function removeValidator(address account) external onlyFromGovernance virtual override {
-        _removeValidator(account);
+        Validator memory validator = _validatorsMap[account];
+        require(validator.status != ValidatorStatus.NotFound, "not found");
+        // remove validator from active list if exists
+        _removeValidatorFromActiveList(account);
+        // remove from validators map
+        delete _validatorOwners[validator.ownerAddress];
+        delete _validatorsMap[account];
+        // emit event about it
+        emit ValidatorRemoved(account);
     }
 
     function _removeValidatorFromActiveList(address validatorAddress) internal {
@@ -608,52 +604,32 @@ contract Staking is InjectorContextHolder, IStaking {
         }
     }
 
-    function _removeValidator(address account) internal {
-        Validator memory validator = _validatorsMap[account];
-        require(validator.status != ValidatorStatus.NotFound, "validator not found");
-        // remove validator from active list if exists
-        _removeValidatorFromActiveList(account);
-        // remove from validators map
-        delete _validatorOwners[validator.ownerAddress];
-        delete _validatorsMap[account];
-        // emit event about it
-        emit ValidatorRemoved(account);
-    }
-
-    function activateValidator(address validator) external onlyFromGovernance virtual override {
-        _activateValidator(validator);
-    }
-
-    function _activateValidator(address validatorAddress) internal {
+    function activateValidator(address validatorAddress) external onlyFromGovernance virtual override {
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(_validatorsMap[validatorAddress].status == ValidatorStatus.Pending, "not pending validator");
+        require(_validatorsMap[validatorAddress].status == ValidatorStatus.Pending, "bad status");
         _activeValidatorsList.push(validatorAddress);
         validator.status = ValidatorStatus.Active;
         _validatorsMap[validatorAddress] = validator;
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
         emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
-    function disableValidator(address validator) external onlyFromGovernance virtual override {
-        _disableValidator(validator);
-    }
-
-    function _disableValidator(address validatorAddress) internal {
+    function disableValidator(address validatorAddress) external onlyFromGovernance virtual override {
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status == ValidatorStatus.Active || validator.status == ValidatorStatus.Jail, "not active validator");
+        require(validator.status == ValidatorStatus.Active || validator.status == ValidatorStatus.Jail, "bad status");
         _removeValidatorFromActiveList(validatorAddress);
         validator.status = ValidatorStatus.Pending;
         _validatorsMap[validatorAddress] = validator;
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
         emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
     function changeValidatorCommissionRate(address validatorAddress, uint16 commissionRate) external {
-        require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "bad commission rate");
+        require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "bad commission");
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status != ValidatorStatus.NotFound, "validator not found");
-        require(validator.ownerAddress == msg.sender, "only validator owner");
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        require(validator.status != ValidatorStatus.NotFound, "not found");
+        require(validator.ownerAddress == msg.sender, "only owner");
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
         snapshot.commissionRate = commissionRate;
         _validatorsMap[validatorAddress] = validator;
         emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), commissionRate);
@@ -661,13 +637,13 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function changeValidatorOwner(address validatorAddress, address newOwner) external override {
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.ownerAddress == msg.sender, "only validator owner");
-        require(_validatorOwners[newOwner] == address(0x00), "owner already in use");
+        require(validator.ownerAddress == msg.sender, "only owner");
+        require(_validatorOwners[newOwner] == address(0x00), "owner in use");
         delete _validatorOwners[validator.ownerAddress];
         validator.ownerAddress = newOwner;
         _validatorOwners[newOwner] = validatorAddress;
         _validatorsMap[validatorAddress] = validator;
-        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
         emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
@@ -675,7 +651,7 @@ contract Staking is InjectorContextHolder, IStaking {
         if (_validatorsMap[account].status != ValidatorStatus.Active) {
             return false;
         }
-        address[] memory topValidators = _getValidators();
+        address[] memory topValidators = getValidators();
         for (uint256 i = 0; i < topValidators.length; i++) {
             if (topValidators[i] == account) return true;
         }
@@ -686,7 +662,7 @@ contract Staking is InjectorContextHolder, IStaking {
         return _validatorsMap[account].status != ValidatorStatus.NotFound;
     }
 
-    function _getValidators() internal view returns (address[] memory) {
+    function getValidators() public view override returns (address[] memory) {
         uint256 n = _activeValidatorsList.length;
         address[] memory orderedValidators = new address[](n);
         for (uint256 i = 0; i < n; i++) {
@@ -700,11 +676,14 @@ contract Staking is InjectorContextHolder, IStaking {
         for (uint256 i = 0; i < k; i++) {
             uint256 nextValidator = i;
             Validator memory currentMax = _validatorsMap[orderedValidators[nextValidator]];
+            ValidatorSnapshot memory maxSnapshot = _validatorSnapshots[currentMax.validatorAddress][currentMax.changedAt];
             for (uint256 j = i + 1; j < n; j++) {
                 Validator memory current = _validatorsMap[orderedValidators[j]];
-                if (_totalDelegatedToValidator(currentMax) < _totalDelegatedToValidator(current)) {
+                ValidatorSnapshot memory currentSnapshot = _validatorSnapshots[current.validatorAddress][current.changedAt];
+                if (maxSnapshot.totalDelegated < currentSnapshot.totalDelegated) {
                     nextValidator = j;
                     currentMax = current;
+                    maxSnapshot = currentSnapshot;
                 }
             }
             address backup = orderedValidators[i];
@@ -718,20 +697,16 @@ contract Staking is InjectorContextHolder, IStaking {
         return orderedValidators;
     }
 
-    function getValidators() external view override returns (address[] memory) {
-        return _getValidators();
-    }
-
     function deposit(address validatorAddress) external payable onlyFromCoinbase virtual override {
         _depositFee(validatorAddress);
     }
 
     function _depositFee(address validatorAddress) internal {
-        require(msg.value > 0, "deposit is zero");
+        require(msg.value > 0);
         // make sure validator is active
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status != ValidatorStatus.NotFound, "validator not found");
-        uint64 epoch = _currentEpoch();
+        require(validator.status != ValidatorStatus.NotFound, "not found");
+        uint64 epoch = currentEpoch();
         // increase total pending rewards for validator for current epoch
         ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);
         currentSnapshot.totalRewards += uint96(msg.value);
@@ -746,7 +721,7 @@ contract Staking is InjectorContextHolder, IStaking {
             return 0;
         }
         // calc validator rewards
-        return _calcValidatorOwnerRewards(validator, _currentEpoch());
+        return _calcValidatorOwnerRewards(validator, currentEpoch());
     }
 
     function getPendingValidatorFee(address validatorAddress) external override view returns (uint256) {
@@ -756,45 +731,52 @@ contract Staking is InjectorContextHolder, IStaking {
             return 0;
         }
         // calc validator rewards
-        return _calcValidatorOwnerRewards(validator, _nextEpoch());
+        return _calcValidatorOwnerRewards(validator, nextEpoch());
     }
 
     function claimValidatorFee(address validatorAddress) external override {
         // make sure validator exists at least
         Validator storage validator = _validatorsMap[validatorAddress];
         // only validator owner can claim deposit fee
-        require(msg.sender == validator.ownerAddress, "only validator owner");
+        require(msg.sender == validator.ownerAddress, "only owner");
         // claim all validator fees
-        _claimValidatorOwnerRewards(validator, _currentEpoch());
+        _claimValidatorOwnerRewards(validator, currentEpoch());
     }
 
     function claimValidatorFeeAtEpoch(address validatorAddress, uint64 beforeEpoch) external override {
         // make sure validator exists at least
         Validator storage validator = _validatorsMap[validatorAddress];
         // only validator owner can claim deposit fee
-        require(msg.sender == validator.ownerAddress, "only validator owner");
+        require(msg.sender == validator.ownerAddress, "only owner");
         // we disallow to claim rewards from future epochs
-        require(beforeEpoch <= _currentEpoch());
+        require(beforeEpoch <= currentEpoch());
         // claim all validator fees
         _claimValidatorOwnerRewards(validator, beforeEpoch);
     }
 
     function getDelegatorFee(address validatorAddress, address delegatorAddress) external override view returns (uint256) {
-        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress, _currentEpoch(), true);
+        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress, currentEpoch(), true);
     }
 
     function getPendingDelegatorFee(address validatorAddress, address delegatorAddress) external override view returns (uint256) {
-        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress, _nextEpoch(), true);
+        return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress, nextEpoch(), true);
     }
 
     function claimDelegatorFee(address validatorAddress) external override {
         // claim all confirmed delegator fees including undelegates
-        _transferDelegatorRewards(validatorAddress, msg.sender, _currentEpoch(), true, true);
+        _transferDelegatorRewards(validatorAddress, msg.sender, currentEpoch(), true, true);
+    }
+
+    function claimDelegatorFeeAtEpoch(address validatorAddress, uint64 beforeEpoch) external override {
+        // make sure delegator can't claim future epochs
+        require(beforeEpoch <= currentEpoch());
+        // claim all confirmed delegator fees including undelegates
+        _transferDelegatorRewards(validatorAddress, msg.sender, beforeEpoch, true, true);
     }
 
     function claimPendingUndelegates(address validator) external override {
         // claim only pending undelegates
-        _transferDelegatorRewards(validator, msg.sender, _currentEpoch(), false, true);
+        _transferDelegatorRewards(validator, msg.sender, currentEpoch(), false, true);
     }
 
     function _calcAvailableForRedelegateAmount(uint256 claimableRewards) internal view returns (uint256 amountToStake, uint256 rewardsDust) {
@@ -808,30 +790,23 @@ contract Staking is InjectorContextHolder, IStaking {
     }
 
     function calcAvailableForRedelegateAmount(address validator, address delegator) external view override returns (uint256 amountToStake, uint256 rewardsDust) {
-        uint256 claimableRewards = _calcDelegatorRewardsAndPendingUndelegates(validator, delegator, _currentEpoch(), false);
+        uint256 claimableRewards = _calcDelegatorRewardsAndPendingUndelegates(validator, delegator, currentEpoch(), false);
         return _calcAvailableForRedelegateAmount(claimableRewards);
     }
 
     function redelegateDelegatorFee(address validator) external override {
         // claim rewards in the redelegate mode (check function code for more info)
-        _redelegateDelegatorRewards(validator, msg.sender, _currentEpoch(), true, false);
-    }
-
-    function claimDelegatorFeeAtEpoch(address validatorAddress, uint64 beforeEpoch) external override {
-        // make sure delegator can't claim future epochs
-        require(beforeEpoch <= _currentEpoch());
-        // claim all confirmed delegator fees including undelegates
-        _transferDelegatorRewards(validatorAddress, msg.sender, beforeEpoch, true, true);
+        _redelegateDelegatorRewards(validator, msg.sender, currentEpoch(), true, false);
     }
 
     function _safeTransferWithGasLimit(address payable recipient, uint256 amount) internal {
         (bool success,) = recipient.call{value : amount, gas : TRANSFER_GAS_LIMIT}("");
-        require(success, "failed to safe transfer");
+        require(success);
     }
 
     function _unsafeTransfer(address payable recipient, uint256 amount) internal {
         (bool success,) = payable(address(recipient)).call{value : amount}("");
-        require(success, "failed to unsafe transfer");
+        require(success);
     }
 
     function slash(address validatorAddress) external onlyFromSlashingIndicator virtual override {
@@ -841,21 +816,22 @@ contract Staking is InjectorContextHolder, IStaking {
     function _slashValidator(address validatorAddress) internal {
         // make sure validator exists
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.status != ValidatorStatus.NotFound, "validator not found");
-        uint64 epoch = _currentEpoch();
+        require(validator.status != ValidatorStatus.NotFound, "not found");
+        uint64 epoch = currentEpoch();
         // increase slashes for current epoch
         ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);
         uint32 slashesCount = currentSnapshot.slashesCount + 1;
         currentSnapshot.slashesCount = slashesCount;
-        // validator state might change, lets update it
-        _validatorsMap[validatorAddress] = validator;
         // if validator has a lot of misses then put it in jail for 1 week (if epoch is 1 day)
         if (slashesCount == _CHAIN_CONFIG_CONTRACT.getFelonyThreshold()) {
-            validator.jailedBefore = _currentEpoch() + _CHAIN_CONFIG_CONTRACT.getValidatorJailEpochLength();
+            validator.jailedBefore = currentEpoch() + _CHAIN_CONFIG_CONTRACT.getValidatorJailEpochLength();
             validator.status = ValidatorStatus.Jail;
             _removeValidatorFromActiveList(validatorAddress);
             _validatorsMap[validatorAddress] = validator;
             emit ValidatorJailed(validatorAddress, epoch);
+        } else {
+            // validator state might change, lets update it
+            _validatorsMap[validatorAddress] = validator;
         }
         // emit event
         emit ValidatorSlashed(validatorAddress, slashesCount, epoch);
