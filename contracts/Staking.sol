@@ -137,11 +137,11 @@ contract Staking is InjectorContextHolder, IStaking {
     ) {
     }
 
-    function initialize(address[] calldata validators, uint256[] calldata initialStakes, uint16 commissionRate) external initializer {
-        require(initialStakes.length == validators.length);
+    function initialize(address[] calldata validators, address[] calldata owners, uint256[] calldata initialStakes, uint16 commissionRate) external initializer {
+        require(validators.length == owners.length && validators.length == initialStakes.length);
         uint256 totalStakes = 0;
         for (uint256 i = 0; i < validators.length; i++) {
-            _addValidator(validators[i], validators[i], ValidatorStatus.Active, commissionRate, initialStakes[i], 0);
+            _addValidator(validators[i], owners[i], ValidatorStatus.Active, commissionRate, initialStakes[i], 0);
             totalStakes += initialStakes[i];
         }
         require(address(this).balance == totalStakes);

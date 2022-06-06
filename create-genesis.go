@@ -149,6 +149,7 @@ type genesisConfig struct {
 	} `json:"features"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
+	Owners          []common.Address          `json:"owners"`
 	SystemTreasury  map[common.Address]uint16 `json:"systemTreasury"`
 	ConsensusParams consensusParams           `json:"consensusParams"`
 	VotingPeriod    int64                     `json:"votingPeriod"`
@@ -273,6 +274,9 @@ func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Addre
 
 func createGenesisConfig(config genesisConfig, targetFile string) error {
 	genesis := defaultGenesisConfig(config)
+	if len(config.Owners) == 0 {
+		config.Owners = config.Validators
+	}
 	// extra data
 	genesis.ExtraData = createExtraData(config.Validators)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
@@ -291,8 +295,9 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		initialStakes = append(initialStakes, initialStake)
 		initialStakeTotal.Add(initialStakeTotal, initialStake)
 	}
-	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint256[]", "uint16"}, []interface{}{
+	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "address[]", "uint256[]", "uint16"}, []interface{}{
 		config.Validators,
+		config.Owners,
 		initialStakes,
 		uint16(config.CommissionRate),
 	}, initialStakeTotal)

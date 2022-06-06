@@ -13,8 +13,10 @@ contract("Parlia", async (accounts) => {
     const {parlia} = await newMockContract(owner);
     assert.equal(await parlia.isValidator('0x00A601f45688DbA8a070722073B015277cF36725'), false)
     const res1 = await parlia.addValidator('0x00A601f45688DbA8a070722073B015277cF36725')
-    assert.equal(res1.logs[0].event, 'ValidatorAdded')
+    assert.equal(res1.logs[0].event, 'Delegated')
     assert.equal(res1.logs[0].args.validator, '0x00A601f45688DbA8a070722073B015277cF36725')
+    assert.equal(res1.logs[1].event, 'ValidatorAdded')
+    assert.equal(res1.logs[1].args.validator, '0x00A601f45688DbA8a070722073B015277cF36725')
     assert.equal(await parlia.isValidator('0x00A601f45688DbA8a070722073B015277cF36725'), true)
     const validators1 = await parlia.getValidators()
     assert.deepEqual(validators1, ['0x00A601f45688DbA8a070722073B015277cF36725'])

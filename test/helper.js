@@ -99,7 +99,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     return bytecode + injectorArgs.substr(2)
   }
   // factory system contracts
-  const staking = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Staking), encodeABI(['address[]', 'uint256[]', 'uint16'], [genesisValidators, genesisValidators.map(() => '0'), '0']), {from: owner});
+  const staking = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Staking), encodeABI(['address[]', 'address[]', 'uint256[]', 'uint16'], [genesisValidators, genesisValidators, genesisValidators.map(() => '0'), '0']), {from: owner});
   const slashingIndicator = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SlashingIndicator), encodeABI([], []), {from: owner});
   const systemReward = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SystemReward), encodeABI(['address[]', 'uint16[]'], [Object.keys(systemTreasury), Object.values(systemTreasury)]), {from: owner});
   const stakingPool = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(StakingPool), encodeABI([], []), {from: owner});
@@ -177,7 +177,7 @@ const expectError = async (promise, text) => {
   try {
     await promise;
   } catch (e) {
-    if (e.message.includes(text)) {
+    if (e.message.includes(text) || !text) {
       return;
     }
     console.error(new Error(`Unexpected error: ${e.message}`))
