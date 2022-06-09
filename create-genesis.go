@@ -140,13 +140,11 @@ type consensusParams struct {
 	UndelegatePeriod         uint32                `json:"undelegatePeriod"`
 	MinValidatorStakeAmount  *math.HexOrDecimal256 `json:"minValidatorStakeAmount"`
 	MinStakingAmount         *math.HexOrDecimal256 `json:"minStakingAmount"`
+	FinalityRewardRatio      uint16                `json:"finalityRewardRatio"`
 }
 
 type genesisConfig struct {
-	ChainId  int64 `json:"chainId"`
-	Features struct {
-		RuntimeUpgradeBlock *math.HexOrDecimal256 `json:"runtimeUpgradeBlock"`
-	} `json:"features"`
+	ChainId         int64                     `json:"chainId"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
 	Owners          []common.Address          `json:"owners"`
@@ -301,7 +299,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		initialStakes,
 		uint16(config.CommissionRate),
 	}, initialStakeTotal)
-	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"}, []interface{}{
+	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256", "uint16"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
 		config.ConsensusParams.MisdemeanorThreshold,
@@ -310,6 +308,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.UndelegatePeriod,
 		(*big.Int)(config.ConsensusParams.MinValidatorStakeAmount),
 		(*big.Int)(config.ConsensusParams.MinStakingAmount),
+		config.ConsensusParams.FinalityRewardRatio,
 	}, nil)
 	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, nil)
 	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, nil)
@@ -377,10 +376,6 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 			Period: 3,
 			// epoch length is managed by consensus params
 		},
-	}
-	// by default runtime upgrades are disabled
-	if config.Features.RuntimeUpgradeBlock != nil {
-		chainConfig.RuntimeUpgradeBlock = (*big.Int)(config.Features.RuntimeUpgradeBlock)
 	}
 	return &core.Genesis{
 		Config:     chainConfig,
