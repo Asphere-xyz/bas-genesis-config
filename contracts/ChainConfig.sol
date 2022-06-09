@@ -13,6 +13,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
     event UndelegatePeriodChanged(uint32 prevValue, uint32 newValue);
     event MinValidatorStakeAmountChanged(uint256 prevValue, uint256 newValue);
     event MinStakingAmountChanged(uint256 prevValue, uint256 newValue);
+    event FinalityRewardRatioChanged(uint16 prevValue, uint16 newValue);
 
     struct ConsensusParams {
         uint32 activeValidatorsLength;
@@ -23,6 +24,7 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 undelegatePeriod;
         uint256 minValidatorStakeAmount;
         uint256 minStakingAmount;
+        uint16 finalityRewardRatio;
     }
 
     ConsensusParams private _consensusParams;
@@ -56,7 +58,8 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint32 validatorJailEpochLength,
         uint32 undelegatePeriod,
         uint256 minValidatorStakeAmount,
-        uint256 minStakingAmount
+        uint256 minStakingAmount,
+        uint16 finalityRewardRatio
     ) external initializer {
         _consensusParams.activeValidatorsLength = activeValidatorsLength;
         emit ActiveValidatorsLengthChanged(0, activeValidatorsLength);
@@ -74,6 +77,8 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         emit MinValidatorStakeAmountChanged(0, minValidatorStakeAmount);
         _consensusParams.minStakingAmount = minStakingAmount;
         emit MinStakingAmountChanged(0, minStakingAmount);
+        _consensusParams.finalityRewardRatio = finalityRewardRatio;
+        emit FinalityRewardRatioChanged(0, finalityRewardRatio);
     }
 
     function getActiveValidatorsLength() external view override returns (uint32) {
@@ -154,5 +159,15 @@ contract ChainConfig is InjectorContextHolder, IChainConfig {
         uint256 prevValue = _consensusParams.minStakingAmount;
         _consensusParams.minStakingAmount = newValue;
         emit MinStakingAmountChanged(prevValue, newValue);
+    }
+
+    function getFinalityRewardRatio() external view returns (uint16) {
+        return _consensusParams.finalityRewardRatio;
+    }
+
+    function setFinalityRewardRatio(uint16 newValue) external override onlyFromGovernance {
+        uint16 prevValue = _consensusParams.finalityRewardRatio;
+        _consensusParams.finalityRewardRatio = newValue;
+        emit FinalityRewardRatioChanged(prevValue, newValue);
     }
 }

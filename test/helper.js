@@ -37,6 +37,7 @@ const DEFAULT_MOCK_PARAMS = {
   genesisValidators: [],
   genesisDeployers: [],
   votingPeriod: '2',
+  finalityRewardRatio: '1000' // 10%
 };
 
 const DEFAULT_CONTRACT_TYPES = {
@@ -80,6 +81,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     minStakingAmount,
     votingPeriod,
     genesisDeployers,
+    finalityRewardRatio,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // convert single param to the object
   if (typeof systemTreasury === 'string') {
@@ -104,7 +106,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   const systemReward = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SystemReward), encodeABI(['address[]', 'uint16[]'], [Object.keys(systemTreasury), Object.values(systemTreasury)]), {from: owner});
   const stakingPool = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(StakingPool), encodeABI([], []), {from: owner});
   const governance = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Governance), encodeABI(['uint256', 'string'], [votingPeriod, 'Governance']), {from: owner});
-  const chainConfig = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(ChainConfig), encodeABI(['uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint256', 'uint256'], [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount]), {from: owner});
+  const chainConfig = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(ChainConfig), encodeABI(['uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint256', 'uint256', 'uint16'], [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount, finalityRewardRatio]), {from: owner});
   const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses, {from: owner});
   const deployerProxy = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(DeployerProxy), encodeABI(['address[]'], [genesisDeployers]), {from: owner});
   // make sure runtime upgrade address is correct

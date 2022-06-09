@@ -104,6 +104,11 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
         return results;
     }
 
+    modifier onlyFromCoinbaseOrSystemReward() virtual {
+        if (msg.sender != block.coinbase && ISystemReward(msg.sender) != _SYSTEM_REWARD_CONTRACT) revert OnlyCoinbase(block.coinbase);
+        _;
+    }
+
     modifier onlyFromCoinbase() virtual {
         if (msg.sender != block.coinbase) revert OnlyCoinbase(block.coinbase);
         _;

@@ -697,21 +697,31 @@ contract Staking is InjectorContextHolder, IStaking {
         return orderedValidators;
     }
 
-    function deposit(address validatorAddress) external payable onlyFromCoinbase virtual override {
-        _depositFee(validatorAddress);
+    function getLivingValidators() external view returns (address[] memory) {
+        return getValidators();
     }
 
-    function _depositFee(address validatorAddress) internal {
+    function getMiningValidators() external view returns (address[] memory) {
+        return getValidators();
+    }
+
+    function deposit(address validatorAddress) external payable onlyFromCoinbase virtual override {
+        // value must be specified
         require(msg.value > 0);
+        // deposit fee for the specific validator
+        _depositFee(validatorAddress, msg.value);
+    }
+
+    function _depositFee(address validatorAddress, uint256 amount) internal {
         // make sure validator is active
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "not found");
         uint64 epoch = currentEpoch();
         // increase total pending rewards for validator for current epoch
         ValidatorSnapshot storage currentSnapshot = _touchValidatorSnapshot(validator, epoch);
-        currentSnapshot.totalRewards += uint96(msg.value);
+        currentSnapshot.totalRewards += uint96(amount);
         // emit event
-        emit ValidatorDeposited(validatorAddress, msg.value, epoch);
+        emit ValidatorDeposited(validatorAddress, amount, epoch);
     }
 
     function getValidatorFee(address validatorAddress) external override view returns (uint256) {

@@ -101,6 +101,38 @@ contract SystemReward is ISystemReward, InjectorContextHolder {
         _claimSystemFee();
     }
 
+    function distributeFinalityReward(address[] calldata validators, uint256[] calldata weights) external onlyFromCoinbase {
+        require(validators.length == weights.length);
+        // calc sum of the weight
+        uint256 totalWeight = 0;
+        for (uint256 i = 0; i < weights.length; i++) {
+            totalWeight += weights[i];
+        }
+        // distribute rewards
+        uint256 totalRewards = address(this).balance * _CHAIN_CONFIG_CONTRACT.getFinalityRewardRatio() / 1e4;
+        for (uint256 i = 0; i < validators.length; i++) {
+            uint256 validatorRewards = totalRewards * weights[i] / totalWeight;
+            _STAKING_CONTRACT.deposit{value: validatorRewards}(validators[i]);
+        }
+    }
+
+    struct VoteData {
+        uint256 sourceBlock;
+        bytes32 sourceHash;
+        uint256 targetBlock;
+        bytes32 targetHash;
+        bytes signature;
+    }
+
+    struct FinalityEvidence {
+        VoteData voteA;
+        VoteData voteB;
+        bytes voterPublicKey;
+    }
+
+    function submitFinalityViolationEvidence(FinalityEvidence calldata evidence) external {
+    }
+
     receive() external payable {
         // increase total system fee
         _systemFee += msg.value;
