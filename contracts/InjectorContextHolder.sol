@@ -3,7 +3,8 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/utils/StorageSlot.sol";
-import "@openzeppelin/contracts/utils/Multicall.sol";
+
+import "./libs/Multicall.sol";
 
 import "./interfaces/IChainConfig.sol";
 import "./interfaces/IGovernance.sol";
@@ -71,21 +72,7 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
 
     function init() external onlyBlock(1) virtual {
         if (_delayedInitializer.length > 0) {
-            _fastDelegateCall(_delayedInitializer);
-        }
-    }
-
-    function _fastDelegateCall(bytes memory data) internal returns (bytes memory _result) {
-        (bool success, bytes memory returnData) = address(this).delegatecall(data);
-        if (success) {
-            return returnData;
-        }
-        if (returnData.length > 0) {
-            assembly {
-                revert(add(32, returnData), mload(returnData))
-            }
-        } else {
-            revert();
+            _selfDelegateCall(_delayedInitializer);
         }
     }
 
@@ -93,15 +80,6 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
         // openzeppelin's class "Initializable" doesnt expose any methods for fetching initialisation status
         StorageSlot.Uint256Slot storage initializedSlot = StorageSlot.getUint256Slot(bytes32(0x0000000000000000000000000000000000000000000000000000000000000001));
         return initializedSlot.value > 0;
-    }
-
-    function multicall(bytes[] calldata data) external virtual override returns (bytes[] memory results) {
-        results = new bytes[](data.length);
-        for (uint256 i = 0; i < data.length; i++) {
-            // this is an optimized a bit multicall w/o using of Address library (it safes a lot of bytecode)
-            results[i] = _fastDelegateCall(data[i]);
-        }
-        return results;
     }
 
     modifier onlyFromCoinbase() virtual {

@@ -786,12 +786,12 @@ contract Staking is InjectorContextHolder, IStaking {
         _redelegateDelegatorRewards(validator, msg.sender, currentEpoch(), true, false);
     }
 
-    function _safeTransferWithGasLimit(address payable recipient, uint256 amount) internal {
+    function _safeTransferWithGasLimit(address payable recipient, uint256 amount) internal virtual {
         (bool success,) = recipient.call{value : amount, gas : TRANSFER_GAS_LIMIT}("");
         require(success);
     }
 
-    function _unsafeTransfer(address payable recipient, uint256 amount) internal {
+    function _unsafeTransfer(address payable recipient, uint256 amount) internal virtual {
         (bool success,) = payable(address(recipient)).call{value : amount}("");
         require(success);
     }
