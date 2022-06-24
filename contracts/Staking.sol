@@ -583,6 +583,9 @@ contract Staking is InjectorContextHolder, IStaking {
     function removeValidator(address account) external onlyFromGovernance virtual override {
         Validator memory validator = _validatorsMap[account];
         require(validator.status != ValidatorStatus.NotFound, "not found");
+        // don't allow to remove validator w/ active delegations
+        ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
+        require(snapshot.totalDelegated == 0, "has delegations");
         // remove validator from active list if exists
         _removeValidatorFromActiveList(account);
         // remove from validators map
