@@ -78,7 +78,7 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
 
     function isInitialized() public view override returns (bool) {
         // openzeppelin's class "Initializable" doesnt expose any methods for fetching initialisation status
-        StorageSlot.Uint256Slot storage initializedSlot = StorageSlot.getUint256Slot(bytes32(0x0000000000000000000000000000000000000000000000000000000000000001));
+        StorageSlot.Uint256Slot storage initializedSlot = StorageSlot.getUint256Slot(bytes32(0x0000000000000000000000000000000000000000000000000000000000000000));
         return initializedSlot.value > 0;
     }
 
