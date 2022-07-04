@@ -462,7 +462,7 @@ contract Staking is InjectorContextHolder, IStaking {
         ValidatorDelegation memory delegation = _validatorDelegations[validator][delegator];
         uint256 availableFunds = 0;
         // process delegate queue to calculate staking rewards
-        while (delegation.delegateGap < delegation.delegateQueue.length) {
+        while (delegation.delegateGap < delegation.delegateQueue.length && gasleft() > CLAIM_BEFORE_GAS) {
             DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegation.delegateGap];
             if (delegateOp.epoch >= beforeEpoch) {
                 break;
@@ -471,7 +471,7 @@ contract Staking is InjectorContextHolder, IStaking {
             if (delegation.delegateGap < delegation.delegateQueue.length - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegation.delegateGap + 1].epoch;
             }
-            for (; delegateOp.epoch < beforeEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+            for (; delegateOp.epoch < beforeEpoch && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch) && gasleft() > CLAIM_BEFORE_GAS; delegateOp.epoch++) {
                 ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
