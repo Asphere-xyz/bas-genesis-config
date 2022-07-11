@@ -91,6 +91,7 @@ contract Staking is InjectorContextHolder, IStaking {
         uint64 changedAt;
         uint64 jailedBefore;
         uint64 claimedAt;
+        bytes votingKey;
     }
 
     struct DelegationOpDelegate {
@@ -142,11 +143,11 @@ contract Staking is InjectorContextHolder, IStaking {
     ) {
     }
 
-    function initialize(address[] calldata validators, address[] calldata owners, uint256[] calldata initialStakes, uint16 commissionRate) external initializer {
-        require(validators.length == owners.length && validators.length == initialStakes.length);
+    function initialize(address[] calldata validators, bytes[] calldata votingKeys, address[] calldata owners, uint256[] calldata initialStakes, uint16 commissionRate) external initializer {
+        require(validators.length == owners.length && validators.length == initialStakes.length && validators.length == votingKeys.length);
         uint256 totalStakes = 0;
         for (uint256 i = 0; i < validators.length; i++) {
-            _addValidator(validators[i], owners[i], ValidatorStatus.Active, commissionRate, initialStakes[i], 0);
+            _addValidator(validators[i], votingKeys[i], owners[i], ValidatorStatus.Active, commissionRate, initialStakes[i], 0);
             totalStakes += initialStakes[i];
         }
         require(address(this).balance == totalStakes);
@@ -445,7 +446,7 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function _processUndelegateQueue(ValidatorDelegation storage delegation, uint64 beforeEpochExclude) internal returns (uint256 availableFunds) {
         uint64 undelegateGap = delegation.undelegateGap;
-        for (uint256 queueLength = delegation.undelegateQueue.length; undelegateGap < queueLength  && gasleft() > CLAIM_BEFORE_GAS;) {
+        for (uint256 queueLength = delegation.undelegateQueue.length; undelegateGap < queueLength && gasleft() > CLAIM_BEFORE_GAS;) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[undelegateGap];
             if (undelegateOp.epoch > beforeEpochExclude) {
                 break;
@@ -538,20 +539,20 @@ contract Staking is InjectorContextHolder, IStaking {
         systemFee = 0;
     }
 
-    function registerValidator(address validatorAddress, uint16 commissionRate) payable external override {
+    function registerValidator(address validatorAddress, bytes calldata votingKey, uint16 commissionRate) payable external override {
         uint256 initialStake = msg.value;
         // // initial stake amount should be greater than minimum validator staking amount
         require(initialStake >= _CHAIN_CONFIG_CONTRACT.getMinValidatorStakeAmount(), "too low");
         require(initialStake % BALANCE_COMPACT_PRECISION == 0, "no remainder");
         // add new validator as pending
-        _addValidator(validatorAddress, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, nextEpoch());
+        _addValidator(validatorAddress, votingKey, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, nextEpoch());
     }
 
-    function addValidator(address account) external onlyFromGovernance virtual override {
-        _addValidator(account, account, ValidatorStatus.Active, 0, 0, nextEpoch());
+    function addValidator(address account, bytes calldata votingKey) external onlyFromGovernance virtual override {
+        _addValidator(account, votingKey, account, ValidatorStatus.Active, 0, 0, nextEpoch());
     }
 
-    function _addValidator(address validatorAddress, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint256 initialStake, uint64 sinceEpoch) internal {
+    function _addValidator(address validatorAddress, bytes calldata votingKey, address validatorOwner, ValidatorStatus status, uint16 commissionRate, uint256 initialStake, uint64 sinceEpoch) internal {
         // validator commission rate
         require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "bad commission");
         // init validator default params
@@ -561,6 +562,7 @@ contract Staking is InjectorContextHolder, IStaking {
         validator.ownerAddress = validatorOwner;
         validator.status = status;
         validator.changedAt = sinceEpoch;
+        validator.votingKey = votingKey;
         _validatorsMap[validatorAddress] = validator;
         // save validator owner
         require(_validatorOwners[validatorOwner] == address(0x00), "owner in use");
@@ -655,11 +657,20 @@ contract Staking is InjectorContextHolder, IStaking {
         emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
+    function changeVotingKey(address validatorAddress, bytes calldata newVotingKey) external override {
+        Validator memory validator = _validatorsMap[validatorAddress];
+        require(validator.ownerAddress == msg.sender, "only owner");
+        validator.votingKey = newVotingKey;
+        _validatorsMap[validatorAddress] = validator;
+        ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
+        emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
+    }
+
     function isValidatorActive(address account) external override view returns (bool) {
         if (_validatorsMap[account].status != ValidatorStatus.Active) {
             return false;
         }
-        address[] memory topValidators = getValidators();
+        (address[] memory topValidators,) = _getValidatorsWithVotingKeys();
         for (uint256 i = 0; i < topValidators.length; i++) {
             if (topValidators[i] == account) return true;
         }
@@ -670,7 +681,12 @@ contract Staking is InjectorContextHolder, IStaking {
         return _validatorsMap[account].status != ValidatorStatus.NotFound;
     }
 
-    function getValidators() public view override returns (address[] memory) {
+    function getValidators() external view override returns (address[] memory) {
+        (address[] memory validators,) = _getValidatorsWithVotingKeys();
+        return validators;
+    }
+
+    function _getValidatorsWithVotingKeys() internal view returns (address[] memory, bytes[] memory) {
         uint256 n = _activeValidatorsList.length;
         address[] memory orderedValidators = new address[](n);
         for (uint256 i = 0; i < n; i++) {
@@ -702,15 +718,19 @@ contract Staking is InjectorContextHolder, IStaking {
         assembly {
             mstore(orderedValidators, k)
         }
-        return orderedValidators;
+        bytes[] memory votingKeys = new bytes[](k);
+        for (uint256 i = 0; i < k; i++) {
+            votingKeys[i] = _validatorsMap[orderedValidators[i]].votingKey;
+        }
+        return (orderedValidators, votingKeys);
     }
 
-    function getLivingValidators() external view returns (address[] memory) {
-        return getValidators();
+    function getLivingValidators() external view returns (address[] memory, bytes[] memory) {
+        return _getValidatorsWithVotingKeys();
     }
 
-    function getMiningValidators() external view returns (address[] memory) {
-        return getValidators();
+    function getMiningValidators() external view returns (address[] memory, bytes[] memory) {
+        return _getValidatorsWithVotingKeys();
     }
 
     function deposit(address validatorAddress) external payable onlyFromCoinbase virtual override {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"io/fs"
 	"io/ioutil"
+	"log"
 	"math/big"
 	"os"
 	"reflect"
@@ -48,7 +50,28 @@ func (d *dummyChainContext) GetHeader(common.Hash, uint64) *types.Header {
 	return nil
 }
 
-func createExtraData(validators []common.Address) []byte {
+func createFastFinalityExtraData(config genesisConfig) []byte {
+	if len(config.Validators) != len(config.BlsKeys) {
+		log.Panicf("ecdsa and bls keys doesn't match (%d != %d)", len(config.Validators), len(config.BlsKeys))
+	}
+	extra := make([]byte, 32)
+	extra = append(extra, byte(len(config.Validators)))
+	for i, v := range config.Validators {
+		extra = append(extra, v.Bytes()...)
+		if len(config.BlsKeys[i]) != 48 {
+			log.Panicf("bls key has incorrect length, must be 48, instead of %d", len(config.BlsKeys[i]))
+		}
+		extra = append(extra, config.BlsKeys[i]...)
+	}
+	extra = append(extra, bytes.Repeat([]byte{0}, 65)...)
+	return extra
+}
+
+func createExtraData(config genesisConfig) []byte {
+	if config.SupportedForks.FastFinalityBlock != nil && (*big.Int)(config.SupportedForks.FastFinalityBlock).Uint64() == 0 {
+		return createFastFinalityExtraData(config)
+	}
+	validators := config.Validators
 	extra := make([]byte, 32+20*len(validators)+65)
 	for i, v := range validators {
 		copy(extra[32+20*i:], v.Bytes())
@@ -143,10 +166,18 @@ type consensusParams struct {
 	FinalityRewardRatio      uint16                `json:"finalityRewardRatio"`
 }
 
+type supportedForks struct {
+	VerifyParliaBlock *math.HexOrDecimal256 `json:"verifyParliaBlock"`
+	BlockRewardsBlock *math.HexOrDecimal256 `json:"blockRewardsBlock"`
+	FastFinalityBlock *math.HexOrDecimal256 `json:"fastFinalityBlock"`
+}
+
 type genesisConfig struct {
 	ChainId         int64                     `json:"chainId"`
+	SupportedForks  supportedForks            `json:"supportedForks"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
+	BlsKeys         []hexutil.Bytes           `json:"blsKeys"`
 	Owners          []common.Address          `json:"owners"`
 	SystemTreasury  map[common.Address]uint16 `json:"systemTreasury"`
 	ConsensusParams consensusParams           `json:"consensusParams"`
@@ -154,6 +185,7 @@ type genesisConfig struct {
 	Faucet          map[common.Address]string `json:"faucet"`
 	CommissionRate  int64                     `json:"commissionRate"`
 	InitialStakes   map[common.Address]string `json:"initialStakes"`
+	BlockRewards    *math.HexOrDecimal256     `json:"blockRewards"`
 }
 
 func traceCallError(deployedBytecode []byte) {
@@ -276,7 +308,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.Owners = config.Validators
 	}
 	// extra data
-	genesis.ExtraData = createExtraData(config.Validators)
+	genesis.ExtraData = createExtraData(config)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
 	var initialStakes []*big.Int
@@ -356,6 +388,13 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	return ioutil.WriteFile(targetFile, newJson, fs.ModePerm)
 }
 
+func decimalToBigInt(value *math.HexOrDecimal256) *big.Int {
+	if value == nil {
+		return nil
+	}
+	return (*big.Int)(value)
+}
+
 func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 	chainConfig := &params.ChainConfig{
 		ChainID:             big.NewInt(config.ChainId),
@@ -372,9 +411,16 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+
+		// supported forks
+		VerifyParliaBlock: decimalToBigInt(config.SupportedForks.VerifyParliaBlock),
+		BlockRewardsBlock: decimalToBigInt(config.SupportedForks.BlockRewardsBlock),
+		FastFinalityBlock: decimalToBigInt(config.SupportedForks.FastFinalityBlock),
+
 		Parlia: &params.ParliaConfig{
 			Period: 3,
 			// epoch length is managed by consensus params
+			BlockRewards: decimalToBigInt(config.BlockRewards),
 		},
 	}
 	return &core.Genesis{
@@ -393,8 +439,15 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 	}
 }
 
+var allSupportedForks = supportedForks{
+	VerifyParliaBlock: math.NewHexOrDecimal256(0),
+	BlockRewardsBlock: math.NewHexOrDecimal256(0),
+	FastFinalityBlock: math.NewHexOrDecimal256(0),
+}
+
 var localNetConfig = genesisConfig{
-	ChainId: 1337,
+	ChainId:        1337,
+	SupportedForks: allSupportedForks,
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
@@ -402,6 +455,9 @@ var localNetConfig = genesisConfig{
 	// list of default validators
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
+	},
+	BlsKeys: []hexutil.Bytes{
+		hexutil.MustDecode("0x8b09f47df1cdb2d2a90b213726c46412059425a7034b3f0f22f611b8748113893a77220cbdf520057785512062a83541"),
 	},
 	SystemTreasury: map[common.Address]uint16{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): 10000,
@@ -430,7 +486,8 @@ var localNetConfig = genesisConfig{
 }
 
 var devNetConfig = genesisConfig{
-	ChainId: 14000,
+	ChainId:        14000,
+	SupportedForks: allSupportedForks,
 	// who is able to deploy smart contract from genesis block (it won't generate event log)
 	Deployers: []common.Address{},
 	// list of default validators (it won't generate event log)
@@ -440,6 +497,13 @@ var devNetConfig = genesisConfig{
 		common.HexToAddress("0xa6ff33e3250cc765052ac9d7f7dfebda183c4b9b"),
 		common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
 		common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
+	},
+	BlsKeys: []hexutil.Bytes{
+		hexutil.MustDecode("0xa580ce1923f1b132214c27c13b9fd8baffa528f7b5a181ed684efffc97c582a52a1b3e9f87da0692b2e16b4910a8ed3a"),
+		hexutil.MustDecode("0x85c6fdd085d732470b1af000ad353a0bcbf1b015fb39120c701ab1bc5c987f8fe3593e9be9b15d77bebf34d2f889e5cd"),
+		hexutil.MustDecode("0xa0584047ee0ca4d1c05246023238dc245402378ec0283ca6f1ed214d6afba8734915248da0d0c15e47930d1cdcb2f0be"),
+		hexutil.MustDecode("0xaccf6d8ab90d221cb737fa432f629d47e7aaee4ed857cff07d4fc58ecfeea07ac0e3143521ff26539eb45e74ce2f2242"),
+		hexutil.MustDecode("0x8c075c56f6a882184f47be046a7f5338f70a05965758ba0a980ea85baf4445799a1143f92cdf9f149c6a4a4c22607e4e"),
 	},
 	SystemTreasury: map[common.Address]uint16{
 		common.HexToAddress("0x0000000000000000000000000000000000000000"): 10000,

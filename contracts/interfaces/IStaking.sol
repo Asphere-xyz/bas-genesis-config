@@ -39,9 +39,9 @@ interface IStaking is IValidatorSet {
 
     function getValidatorByOwner(address owner) external view returns (address);
 
-    function registerValidator(address validator, uint16 commissionRate) payable external;
+    function registerValidator(address validator, bytes calldata votingKey, uint16 commissionRate) payable external;
 
-    function addValidator(address validator) external;
+    function addValidator(address validator, bytes calldata votingKey) external;
 
     function removeValidator(address validator) external;
 
@@ -54,6 +54,8 @@ interface IStaking is IValidatorSet {
     function changeValidatorCommissionRate(address validator, uint16 commissionRate) external;
 
     function changeValidatorOwner(address validator, address newOwner) external;
+
+    function changeVotingKey(address validatorAddress, bytes calldata newVotingKey) external;
 
     function getValidatorDelegation(address validator, address delegator) external view returns (
         uint256 delegatedAmount,
