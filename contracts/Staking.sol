@@ -47,7 +47,12 @@ contract Staking is InjectorContextHolder, IStaking {
      * might cause problems with smart contracts who used to stake transparent proxies or
      * beacon proxies that have a lot of expensive SLOAD instructions.
      */
-    uint64 internal constant TRANSFER_GAS_LIMIT = 30000;
+    uint64 internal constant TRANSFER_GAS_LIMIT = 30_000;
+    /**
+     * Some items are stored in the queues and we must iterate though them to
+     * execute one by one. Somtimes gas might not be enough for the tx execution.
+     */
+    uint32 internal constant CLAIM_BEFORE_GAS = 100_000;
 
     // validator events
     event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
@@ -409,7 +414,7 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function _processDelegateQueue(address validator, ValidatorDelegation storage delegation, uint64 beforeEpochExclude) internal returns (uint256 availableFunds) {
         uint64 delegateGap = delegation.delegateGap;
-        for (uint256 queueLength = delegation.delegateQueue.length; delegateGap < queueLength;) {
+        for (uint256 queueLength = delegation.delegateQueue.length; delegateGap < queueLength && gasleft() > CLAIM_BEFORE_GAS;) {
             DelegationOpDelegate memory delegateOp = delegation.delegateQueue[delegateGap];
             if (delegateOp.epoch >= beforeEpochExclude) {
                 break;
@@ -418,7 +423,7 @@ contract Staking is InjectorContextHolder, IStaking {
             if (delegateGap < queueLength - 1) {
                 voteChangedAtEpoch = delegation.delegateQueue[delegateGap + 1].epoch;
             }
-            for (; delegateOp.epoch < beforeEpochExclude && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch); delegateOp.epoch++) {
+            for (; delegateOp.epoch < beforeEpochExclude && (voteChangedAtEpoch == 0 || delegateOp.epoch < voteChangedAtEpoch) && gasleft() > CLAIM_BEFORE_GAS; delegateOp.epoch++) {
                 ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator][delegateOp.epoch];
                 if (validatorSnapshot.totalDelegated == 0) {
                     continue;
@@ -440,7 +445,7 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function _processUndelegateQueue(ValidatorDelegation storage delegation, uint64 beforeEpochExclude) internal returns (uint256 availableFunds) {
         uint64 undelegateGap = delegation.undelegateGap;
-        for (uint256 queueLength = delegation.undelegateQueue.length; undelegateGap < queueLength;) {
+        for (uint256 queueLength = delegation.undelegateQueue.length; undelegateGap < queueLength  && gasleft() > CLAIM_BEFORE_GAS;) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[undelegateGap];
             if (undelegateOp.epoch > beforeEpochExclude) {
                 break;
@@ -493,7 +498,7 @@ contract Staking is InjectorContextHolder, IStaking {
         uint256 availableFunds = 0;
         uint256 systemFee = 0;
         uint64 claimAt = validator.claimedAt;
-        for (; claimAt < beforeEpoch; claimAt++) {
+        for (; claimAt < beforeEpoch && gasleft() > CLAIM_BEFORE_GAS; claimAt++) {
             ValidatorSnapshot memory validatorSnapshot = _validatorSnapshots[validator.validatorAddress][claimAt];
             (/*uint256 delegatorFee*/, uint256 ownerFee, uint256 slashingFee) = _calcValidatorSnapshotEpochPayout(validatorSnapshot);
             availableFunds += ownerFee;
@@ -578,6 +583,9 @@ contract Staking is InjectorContextHolder, IStaking {
     function removeValidator(address account) external onlyFromGovernance virtual override {
         Validator memory validator = _validatorsMap[account];
         require(validator.status != ValidatorStatus.NotFound, "not found");
+        // don't allow to remove validator w/ active delegations
+        ValidatorSnapshot memory snapshot = _validatorSnapshots[validator.validatorAddress][validator.changedAt];
+        require(snapshot.totalDelegated == 0, "has delegations");
         // remove validator from active list if exists
         _removeValidatorFromActiveList(account);
         // remove from validators map
@@ -753,17 +761,6 @@ contract Staking is InjectorContextHolder, IStaking {
         _claimValidatorOwnerRewards(validator, currentEpoch());
     }
 
-    function claimValidatorFeeAtEpoch(address validatorAddress, uint64 beforeEpoch) external override {
-        // make sure validator exists at least
-        Validator storage validator = _validatorsMap[validatorAddress];
-        // only validator owner can claim deposit fee
-        require(msg.sender == validator.ownerAddress, "only owner");
-        // we disallow to claim rewards from future epochs
-        require(beforeEpoch <= currentEpoch());
-        // claim all validator fees
-        _claimValidatorOwnerRewards(validator, beforeEpoch);
-    }
-
     function getDelegatorFee(address validatorAddress, address delegatorAddress) external override view returns (uint256) {
         return _calcDelegatorRewardsAndPendingUndelegates(validatorAddress, delegatorAddress, currentEpoch(), true);
     }
@@ -775,13 +772,6 @@ contract Staking is InjectorContextHolder, IStaking {
     function claimDelegatorFee(address validatorAddress) external override {
         // claim all confirmed delegator fees including undelegates
         _transferDelegatorRewards(validatorAddress, msg.sender, currentEpoch(), true, true);
-    }
-
-    function claimDelegatorFeeAtEpoch(address validatorAddress, uint64 beforeEpoch) external override {
-        // make sure delegator can't claim future epochs
-        require(beforeEpoch <= currentEpoch());
-        // claim all confirmed delegator fees including undelegates
-        _transferDelegatorRewards(validatorAddress, msg.sender, beforeEpoch, true, true);
     }
 
     function claimPendingUndelegates(address validator) external override {
@@ -809,12 +799,12 @@ contract Staking is InjectorContextHolder, IStaking {
         _redelegateDelegatorRewards(validator, msg.sender, currentEpoch(), true, false);
     }
 
-    function _safeTransferWithGasLimit(address payable recipient, uint256 amount) internal {
+    function _safeTransferWithGasLimit(address payable recipient, uint256 amount) internal virtual {
         (bool success,) = recipient.call{value : amount, gas : TRANSFER_GAS_LIMIT}("");
         require(success);
     }
 
-    function _unsafeTransfer(address payable recipient, uint256 amount) internal {
+    function _unsafeTransfer(address payable recipient, uint256 amount) internal virtual {
         (bool success,) = payable(address(recipient)).call{value : amount}("");
         require(success);
     }

@@ -70,8 +70,6 @@ interface IStaking is IValidatorSet {
 
     function claimValidatorFee(address validator) external;
 
-    function claimValidatorFeeAtEpoch(address validator, uint64 beforeEpoch) external;
-
     function getDelegatorFee(address validator, address delegator) external view returns (uint256);
 
     function getPendingDelegatorFee(address validator, address delegator) external view returns (uint256);
@@ -83,8 +81,6 @@ interface IStaking is IValidatorSet {
     function claimPendingUndelegates(address validator) external;
 
     function redelegateDelegatorFee(address validator) external;
-
-    function claimDelegatorFeeAtEpoch(address validator, uint64 beforeEpoch) external;
 
     function slash(address validator) external;
 }
