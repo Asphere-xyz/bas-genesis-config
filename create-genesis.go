@@ -51,17 +51,17 @@ func (d *dummyChainContext) GetHeader(common.Hash, uint64) *types.Header {
 }
 
 func createFastFinalityExtraData(config genesisConfig) []byte {
-	if len(config.Validators) != len(config.BlsKeys) {
-		log.Panicf("ecdsa and bls keys doesn't match (%d != %d)", len(config.Validators), len(config.BlsKeys))
+	if len(config.Validators) != len(config.VotingKeys) {
+		log.Panicf("ecdsa and bls keys doesn't match (%d != %d)", len(config.Validators), len(config.VotingKeys))
 	}
 	extra := make([]byte, 32)
 	extra = append(extra, byte(len(config.Validators)))
 	for i, v := range config.Validators {
 		extra = append(extra, v.Bytes()...)
-		if len(config.BlsKeys[i]) != 48 {
-			log.Panicf("bls key has incorrect length, must be 48, instead of %d", len(config.BlsKeys[i]))
+		if len(config.VotingKeys[i]) != 48 {
+			log.Panicf("bls key has incorrect length, must be 48, instead of %d", len(config.VotingKeys[i]))
 		}
-		extra = append(extra, config.BlsKeys[i]...)
+		extra = append(extra, config.VotingKeys[i]...)
 	}
 	extra = append(extra, bytes.Repeat([]byte{0}, 65)...)
 	return extra
@@ -177,7 +177,7 @@ type genesisConfig struct {
 	SupportedForks  supportedForks            `json:"supportedForks"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
-	BlsKeys         []hexutil.Bytes           `json:"blsKeys"`
+	VotingKeys      []hexutil.Bytes           `json:"votingKeys"`
 	Owners          []common.Address          `json:"owners"`
 	SystemTreasury  map[common.Address]uint16 `json:"systemTreasury"`
 	ConsensusParams consensusParams           `json:"consensusParams"`
@@ -186,6 +186,13 @@ type genesisConfig struct {
 	CommissionRate  int64                     `json:"commissionRate"`
 	InitialStakes   map[common.Address]string `json:"initialStakes"`
 	BlockRewards    *math.HexOrDecimal256     `json:"blockRewards"`
+}
+
+func hexBytesToNormalBytes(value []hexutil.Bytes) (result [][]byte) {
+	for _, v := range value {
+		result = append(result, v)
+	}
+	return result
 }
 
 func traceCallError(deployedBytecode []byte) {
@@ -265,7 +272,10 @@ func createVirtualMachine(genesis *core.Genesis, systemContract common.Address, 
 	txContext := core.NewEVMTxContext(
 		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
 	)
-	return statedb, vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
+	chainConfig := *genesis.Config
+	// make copy of chain config with disabled EIP-158 (for testing period)
+	chainConfig.EIP158Block = nil
+	return statedb, vm.NewEVM(blockContext, txContext, statedb, &chainConfig, vm.Config{})
 }
 
 func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, balance *big.Int) {
@@ -325,8 +335,9 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		initialStakes = append(initialStakes, initialStake)
 		initialStakeTotal.Add(initialStakeTotal, initialStake)
 	}
-	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "address[]", "uint256[]", "uint16"}, []interface{}{
+	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "bytes[]", "address[]", "uint256[]", "uint16"}, []interface{}{
 		config.Validators,
+		hexBytesToNormalBytes(config.VotingKeys),
 		config.Owners,
 		initialStakes,
 		uint16(config.CommissionRate),
@@ -456,7 +467,7 @@ var localNetConfig = genesisConfig{
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
 	},
-	BlsKeys: []hexutil.Bytes{
+	VotingKeys: []hexutil.Bytes{
 		hexutil.MustDecode("0x8b09f47df1cdb2d2a90b213726c46412059425a7034b3f0f22f611b8748113893a77220cbdf520057785512062a83541"),
 	},
 	SystemTreasury: map[common.Address]uint16{
@@ -498,7 +509,7 @@ var devNetConfig = genesisConfig{
 		common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
 		common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
 	},
-	BlsKeys: []hexutil.Bytes{
+	VotingKeys: []hexutil.Bytes{
 		hexutil.MustDecode("0xa580ce1923f1b132214c27c13b9fd8baffa528f7b5a181ed684efffc97c582a52a1b3e9f87da0692b2e16b4910a8ed3a"),
 		hexutil.MustDecode("0x85c6fdd085d732470b1af000ad353a0bcbf1b015fb39120c701ab1bc5c987f8fe3593e9be9b15d77bebf34d2f889e5cd"),
 		hexutil.MustDecode("0xa0584047ee0ca4d1c05246023238dc245402378ec0283ca6f1ed214d6afba8734915248da0d0c15e47930d1cdcb2f0be"),
