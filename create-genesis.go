@@ -308,6 +308,14 @@ func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Addre
 		}
 		genesis.Alloc[addr] = genesisAccount
 	}
+	if systemContract == stakingAddress {
+		res, _, err := virtualMachine.Call(vm.AccountRef(common.Address{}), stakingAddress, hexutil.MustDecode("0xfacd743b0000000000000000000000000000000000000000000000000000000000000000"), 10_000_000, big.NewInt(0))
+		if err != nil {
+			traceCallError(result)
+			panic(err)
+		}
+		println(hexutil.Encode(res))
+	}
 	// someone touches zero address and it increases nonce
 	delete(genesis.Alloc, common.Address{})
 }

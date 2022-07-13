@@ -33,7 +33,7 @@ contract("Staking", async (accounts) => {
   it("staker can do simple delegation", async () => {
     // 1 transaction = 1 block, current epoch length is 10 blocks
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50'})
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     let result = await parlia.getValidatorDelegation(validator1, staker1);
     assert.equal(result.delegatedAmount.toString(), '0')
     let res = await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0
@@ -55,7 +55,7 @@ contract("Staking", async (accounts) => {
   })
   it("delegate after committed delegation should increase delegated amount", async () => {
     const {parlia} = await newMockContract(owner)
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0
     let result = await parlia.getValidatorDelegation(validator1, staker1);
     assert.equal(result.delegatedAmount.toString(), '1000000000000000000')
@@ -66,7 +66,7 @@ contract("Staking", async (accounts) => {
   });
   it("user should be able undelegate after undelegate", async () => {
     const {parlia} = await newMockContract(owner)
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await parlia.delegate(validator1, {from: staker1, value: '3000000000000000000'}); // 3.0
     await waitForNextEpoch(parlia);
     await parlia.undelegate(validator1, '1000000000000000000', {from: staker1}); // 1.0
@@ -80,8 +80,8 @@ contract("Staking", async (accounts) => {
   });
   it("undelegate should work on existing delegation", async () => {
     const {parlia} = await newMockContract(owner)
-    await parlia.addValidator(validator1);
-    await parlia.addValidator(validator2);
+    await parlia.addValidator(validator1, '0x');
+    await parlia.addValidator(validator2, '0x');
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // +1.0
     assert.deepEqual(Array.from(await parlia.getValidators()), [validator1, validator2])
     await parlia.delegate(validator2, {from: staker2, value: '2000000000000000000'}); // +2.0
@@ -106,7 +106,7 @@ contract("Staking", async (accounts) => {
   });
   it("staker can't undelegate more than delegated", async () => {
     const {parlia} = await newMockContract(owner)
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     // delegate 6 tokens to the validator
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // +1.0
     assert.equal((await parlia.getValidatorDelegation(validator1, staker1)).delegatedAmount.toString(), '1000000000000000000')
@@ -134,11 +134,11 @@ contract("Staking", async (accounts) => {
   it("active validator set depends on staked amount", async () => {
     const {parlia} = await newMockContract(owner)
     // check current epochs
-    await parlia.addValidator(validator1); // 0x821aEa9a577a9b44299B9c15c88cf3087F3b5544
-    await parlia.addValidator(validator2); // 0x0d1d4e623D10F9FBA5Db95830F7d3839406C6AF2
-    await parlia.addValidator(validator3); // 0x2932b7A2355D6fecc4b5c0B6BD44cC31df247a2e
-    await parlia.addValidator(validator4); // 0x2191eF87E392377ec08E7c08Eb105Ef5448eCED5
-    await parlia.addValidator(validator5); // 0x0F4F2Ac550A1b4e2280d04c21cEa7EBD822934b5
+    await parlia.addValidator(validator1, '0x'); // 0x821aEa9a577a9b44299B9c15c88cf3087F3b5544
+    await parlia.addValidator(validator2, '0x'); // 0x0d1d4e623D10F9FBA5Db95830F7d3839406C6AF2
+    await parlia.addValidator(validator3, '0x'); // 0x2932b7A2355D6fecc4b5c0B6BD44cC31df247a2e
+    await parlia.addValidator(validator4, '0x'); // 0x2191eF87E392377ec08E7c08Eb105Ef5448eCED5
+    await parlia.addValidator(validator5, '0x'); // 0x0F4F2Ac550A1b4e2280d04c21cEa7EBD822934b5
     // delegate
     await parlia.delegate(validator1, {from: staker1, value: '3000000000000000000'}); // 3.0
     await parlia.delegate(validator2, {from: staker2, value: '2000000000000000000'}); // 2.0
@@ -160,8 +160,8 @@ contract("Staking", async (accounts) => {
   });
   it("stake to non-existing validator", async () => {
     const {parlia} = await newMockContract(owner)
-    await parlia.addValidator(validator1);
-    await parlia.addValidator(validator3);
+    await parlia.addValidator(validator1, '0x');
+    await parlia.addValidator(validator3, '0x');
     await expectError(parlia.delegate(validator2, {
       from: staker1,
       value: '3000000000000000000'
@@ -214,7 +214,7 @@ contract("Staking", async (accounts) => {
   })
   it("validator w/o delegators should get all rewards", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await parlia.changeValidatorCommissionRate(validator1, '1000', {from: validator1}); // 10%
     await waitForNextEpoch(parlia);
     await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
@@ -238,7 +238,7 @@ contract("Staking", async (accounts) => {
   })
   it("validator rewards are well-calculated", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await parlia.changeValidatorCommissionRate(validator1, '30', {from: validator1}); // 0.3%
     // delegate 1 ether to validator (100% of power)
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1 ether
@@ -294,8 +294,8 @@ contract("Staking", async (accounts) => {
       misdemeanorThreshold: '5',
       felonyThreshold: '10'
     })
-    await parlia.addValidator(validator1);
-    await parlia.addValidator(validator2);
+    await parlia.addValidator(validator1, '0x');
+    await parlia.addValidator(validator2, '0x');
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
     // slash 5 times
@@ -315,7 +315,7 @@ contract("Staking", async (accounts) => {
       minValidatorStakeAmount: '0',
       minStakingAmount: '0',
     })
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await parlia.delegate(validator1, {
       from: staker1,
       value: '10000000000'
@@ -339,8 +339,8 @@ contract("Staking", async (accounts) => {
       misdemeanorThreshold: '10',
       felonyThreshold: '20'
     })
-    await parlia.addValidator(validator1);
-    await parlia.addValidator(validator2);
+    await parlia.addValidator(validator1, '0x');
+    await parlia.addValidator(validator2, '0x');
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
     // slash for 19 times
@@ -362,8 +362,8 @@ contract("Staking", async (accounts) => {
       felonyThreshold: '5', // jail after 5 misses
       validatorJailEpochLength: '2', // put in jail for 2 epochs (100 blocks)
     })
-    await parlia.addValidator(validator1);
-    await parlia.addValidator(validator2);
+    await parlia.addValidator(validator1, '0x');
+    await parlia.addValidator(validator2, '0x');
     // we can't release validator if its active
     await expectError(parlia.releaseValidatorFromJail(validator2, {from: validator1}), 'bad status')
     // all validators are active
@@ -412,7 +412,7 @@ contract("Staking", async (accounts) => {
   })
   it("validator owner is changed by existing owner", async () => {
     const {parlia} = await newMockContract(owner);
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     assert.equal(await parlia.getValidatorByOwner(validator1), validator1);
     await expectError(parlia.changeValidatorOwner(validator1, owner, {from: validator2}), 'only owner');
     await parlia.changeValidatorOwner(validator1, owner, {from: validator1});
@@ -420,12 +420,12 @@ contract("Staking", async (accounts) => {
   })
   it("only validator owner can change commission rate", async () => {
     const {parlia} = await newMockContract(owner);
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await expectError(parlia.changeValidatorCommissionRate(validator1, '0', {from: validator2}), 'only owner');
   });
   it("delegator can claim new rewards w/o new delegations", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '5'});
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     // delegate 1 ether (100%)
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
@@ -444,7 +444,7 @@ contract("Staking", async (accounts) => {
     const {parlia} = await newMockContract(owner, {
       epochBlockInterval: '1',
     });
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0 (100% share)
     const costOfClaims = [1, 10]
     for (const blocks of costOfClaims) {
@@ -521,8 +521,8 @@ contract("Staking", async (accounts) => {
       felonyThreshold: '5', // jail after 5 misses
       validatorJailEpochLength: '2', // put in jail for 2 epochs (100 blocks)
     })
-    await parlia.addValidator(validator1);
-    await parlia.addValidator(validator2);
+    await parlia.addValidator(validator1, '0x');
+    await parlia.addValidator(validator2, '0x');
     // let's wait for the next epoch (to be sure that slashing happen in one epoch)
     await waitForNextEpoch(parlia)
     // slash for 5 times

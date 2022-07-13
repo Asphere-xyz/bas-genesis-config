@@ -11,12 +11,12 @@ contract("StakingPool", async (accounts) => {
   const [owner, staker1, staker2, validator1] = accounts
   it("empty delegator claim should work", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50'})
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await parlia.claimDelegatorFee(validator1, {from: staker1});
   })
   it("staker can do simple delegation", async () => {
     const {parlia, stakingPool} = await newMockContract(owner, {epochBlockInterval: '50'})
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     let res = await stakingPool.stake(validator1, {from: staker1, value: '1000000000000000000'}); // 1.0
     assert.equal(res.logs[0].args.validator, validator1);
     assert.equal(res.logs[0].args.staker, staker1);
@@ -34,7 +34,7 @@ contract("StakingPool", async (accounts) => {
   })
   it("staker can claim his rewards", async () => {
     const {parlia, stakingPool} = await newMockContract(owner, {epochBlockInterval: '10'})
-    await parlia.addValidator(validator1);
+    await parlia.addValidator(validator1, '0x');
     await stakingPool.stake(validator1, {from: staker1, value: '50000000000000000000'}); // 50.0
     assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '50000000000000000000');
     await waitForNextEpoch(parlia);

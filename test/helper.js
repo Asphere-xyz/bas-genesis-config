@@ -14,6 +14,7 @@ const StakingPool = artifacts.require("StakingPool");
 const RuntimeUpgrade = artifacts.require("RuntimeUpgrade");
 const RuntimeProxy = artifacts.require("RuntimeProxy");
 const DeployerProxy = artifacts.require("DeployerProxy");
+const IStaking = artifacts.require("IStaking");
 
 const FakeChainConfig = artifacts.require("FakeChainConfig");
 const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
@@ -125,8 +126,8 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   await (await InjectorContextHolder.at(deployerProxy.address)).init({from: owner});
   // map proxies to the correct ABIs
   return {
-    staking: await Staking.at(staking.address),
-    parlia: await Staking.at(staking.address),
+    staking: await IStaking.at(staking.address),
+    parlia: await IStaking.at(staking.address),
     slashingIndicator: await SlashingIndicator.at(slashingIndicator.address),
     systemReward: await SystemReward.at(systemReward.address),
     stakingPool: await StakingPool.at(stakingPool.address),
