@@ -905,7 +905,7 @@ contract Staking is StakingStorageLayout, Proxy {
         runtimeUpgradeContract,
         deployerProxyContract
     ) {
-        _rewardDistributionLib = new StakingRewardDistributionLib{salt: keccak256("1")}(
+        _rewardDistributionLib = new StakingRewardDistributionLib{salt : keccak256("1")}(
             stakingContract,
             slashingIndicatorContract,
             systemRewardContract,
@@ -915,7 +915,7 @@ contract Staking is StakingStorageLayout, Proxy {
             runtimeUpgradeContract,
             deployerProxyContract
         );
-        _validatorRegistryLib = new StakingValidatorRegistryLib{salt: keccak256("2")}(
+        _validatorRegistryLib = new StakingValidatorRegistryLib{salt : keccak256("2")}(
             stakingContract,
             slashingIndicatorContract,
             systemRewardContract,
@@ -937,42 +937,38 @@ contract Staking is StakingStorageLayout, Proxy {
         require(address(this).balance == totalStakes);
     }
 
-//    function _delegate0(address /*implementation*/) internal {
-//        address validatorManagementLib = address(_validatorManagementLib);
-//        address rewardDistributionLib = address(_rewardDistributionLib);
-//        assembly {
-//        // first try
-//            calldatacopy(0, 0, calldatasize())
-//            let result := delegatecall(gas(), validatorManagementLib, 0, calldatasize(), 0, 0)
-//            returndatacopy(0, 0, returndatasize())
-//            switch result
-//            case 0 {
-//                if not(eq(returndatasize(), 0)) {
-//                    revert(0, returndatasize())
-//                }
-//            }
-//            default {
-//                return (0x100, returndatasize())
-//            }
-//        // second try
-//            calldatacopy(0, 0, calldatasize())
-//            result := delegatecall(gas(), rewardDistributionLib, 0, calldatasize(), 0x100, 0)
-//            returndatacopy(0x100, 0, returndatasize())
-//            switch result
-//            case 0 {
-//                revert(0x100, returndatasize())
-//            }
-//            default {
-//                return (0x100, returndatasize())
-//            }
-//        }
-//    }
-
-//    function _delegate(address) internal override {
-//    }
+    function _delegate(address /*implementation*/) internal virtual override {
+        address validatorRegistryLib = address(_validatorRegistryLib);
+        address rewardDistributionLib = address(_rewardDistributionLib);
+        assembly {
+        // first try
+            calldatacopy(0, 0, calldatasize())
+            let result := delegatecall(gas(), validatorRegistryLib, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch result
+            case 0 {
+                if gt(returndatasize(), 0) {
+                    revert(0, returndatasize())
+                }
+            }
+            default {
+                return(0, returndatasize())
+            }
+        // second try
+            calldatacopy(0, 0, calldatasize())
+            result := delegatecall(gas(), rewardDistributionLib, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch result
+            case 0 {
+                revert(0, returndatasize())
+            }
+            default {
+                return(0, returndatasize())
+            }
+        }
+    }
 
     function _implementation() internal view override virtual returns (address) {
-        return address(_validatorRegistryLib);
-        //        return 0x0000000000000000000000000000000000000000;
+        return 0x0000000000000000000000000000000000000000;
     }
 }
