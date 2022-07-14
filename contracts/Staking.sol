@@ -649,7 +649,7 @@ contract StakingValidatorRegistryLib is StakingStorageLayout, StakingLibMixin, I
         _releaseValidatorFromJail(validator);
     }
 
-    function forceUnJailValidator(address validatorAddress) external onlyFromGovernance {
+    function forceUnJailValidator(address validatorAddress) external override onlyFromGovernance {
         // make sure validator is in jail
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Jail, "bad status");

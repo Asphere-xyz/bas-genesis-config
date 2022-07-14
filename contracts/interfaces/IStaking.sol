@@ -98,6 +98,8 @@ interface IStakingValidatorManagement is IStakingEvents {
 
     function releaseValidatorFromJail(address validator) external;
 
+    function forceUnJailValidator(address validatorAddress) external;
+
     function changeValidatorCommissionRate(address validator, uint16 commissionRate) external;
 
     function changeValidatorOwner(address validator, address newOwner) external;

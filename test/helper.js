@@ -125,11 +125,14 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   await (await InjectorContextHolder.at(chainConfig.address)).init({from: owner});
   await (await InjectorContextHolder.at(deployerProxy.address)).init({from: owner});
   // patch staking interface to be compatible with unit tests
+  const chainConfig2 = await ChainConfig.at(chainConfig.address);
   IStaking.prototype.currentEpoch = async () => {
-    const chainConfig2 = await ChainConfig.at(chainConfig.address);
     const currentBlockHeight = await web3.eth.getBlockNumber(),
       epochBlockInterval = await chainConfig2.getEpochBlockInterval();
-    return currentBlockHeight / epochBlockInterval;
+    return (currentBlockHeight / epochBlockInterval) | 0;
+  }
+  IStaking.prototype.getEpochBlockInterval = async () => {
+    return chainConfig2.getEpochBlockInterval()
   }
   // map proxies to the correct ABIs
   return {
@@ -178,9 +181,11 @@ const advanceBlock = () => {
 };
 
 const advanceBlocks = async (count) => {
+  let promises = []
   for (let i = 0; i < count; i++) {
-    await advanceBlock();
+    promises.push(advanceBlock());
   }
+  await Promise.all(promises)
 }
 
 const expectError = async (promise, text) => {
@@ -207,14 +212,17 @@ const extractTxCost = async (executionResult) => {
   return executionResult;
 }
 
-const waitForNextEpoch = async (parlia, blockStep = 1) => {
-  const currentEpoch = await parlia.currentEpoch()
-  while (true) {
-    await advanceBlocks(blockStep)
-    const nextEpoch = await parlia.currentEpoch()
-    if (`${currentEpoch}` === `${nextEpoch}`) continue;
-    break;
-  }
+let totalAwaitTime = 0;
+
+const waitForNextEpoch = async (parlia) => {
+  let elapsedTime = new Date().getTime()
+  const epochBlockInterval = Number(await parlia.getEpochBlockInterval()),
+    currentBlockNumber = Number(await web3.eth.getBlockNumber())
+  const nextEpochAt = ((currentBlockNumber / epochBlockInterval) | 0) * epochBlockInterval + epochBlockInterval,
+    mineBlocks = nextEpochAt - currentBlockNumber
+  await advanceBlocks(mineBlocks);
+  elapsedTime = new Date().getTime() - elapsedTime
+  totalAwaitTime += elapsedTime
 }
 
 module.exports = {

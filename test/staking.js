@@ -170,7 +170,7 @@ contract("Staking", async (accounts) => {
   it("validator can claim both staking and commission rewards", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
     // create validator with 30% fee and 1 ether self stake
-    await parlia.registerValidator(validator1, '3000', {from: validator1, value: '1000000000000000000'});
+    await parlia.registerValidator(validator1, '0x', '3000', {from: validator1, value: '1000000000000000000'});
     await parlia.activateValidator(validator1);
     await waitForNextEpoch(parlia);
     // deposit 2 ether fee in different epochs
@@ -190,7 +190,7 @@ contract("Staking", async (accounts) => {
   it("staker rewards with multiple delegations", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
     // create validator with 10% fee and 2 ether self stake
-    await parlia.registerValidator(validator1, '1000', {from: validator1, value: '2000000000000000000'});
+    await parlia.registerValidator(validator1, '0x', '1000', {from: validator1, value: '2000000000000000000'});
     await parlia.activateValidator(validator1);
     await waitForNextEpoch(parlia);
     // do first delegation
@@ -225,7 +225,7 @@ contract("Staking", async (accounts) => {
   it("only committed epoch is claimable", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
     // create validator with 10% fee and 2 ether self stake
-    await parlia.registerValidator(validator1, '1000', {from: validator1, value: '2000000000000000000'});
+    await parlia.registerValidator(validator1, '0x', '1000', {from: validator1, value: '2000000000000000000'});
     await parlia.activateValidator(validator1);
     await waitForNextEpoch(parlia);
     // deposit 1 ether and close one epoch, another deposit keep pending
@@ -396,7 +396,7 @@ contract("Staking", async (accounts) => {
       epochBlockInterval: '50', // 50 blocks
       undelegatePeriod: '0', // let claim in the next epoch
     })
-    await parlia.registerValidator(validator1, '1000', {from: validator1, value: '10000000000000000000'}); // 10
+    await parlia.registerValidator(validator1, '0x', '1000', {from: validator1, value: '10000000000000000000'}); // 10
     await waitForNextEpoch(parlia);
     let validatorStatus = await parlia.getValidatorStatus(validator1);
     assert.equal(validatorStatus.totalDelegated, '10000000000000000000');
