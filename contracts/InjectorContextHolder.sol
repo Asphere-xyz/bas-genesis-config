@@ -71,7 +71,7 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
 
     function init() external onlyBlock(1) virtual {
         if (_delayedInitializer.length > 0) {
-            _selfDelegateCall(_delayedInitializer);
+            _delegateCall(_delayedInitializer);
         }
     }
 
@@ -81,28 +81,23 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
         return initializedSlot.value > 0;
     }
 
-    modifier onlyFromCoinbaseOrSystemReward() virtual {
-        if (msg.sender != block.coinbase && ISystemReward(msg.sender) != _SYSTEM_REWARD_CONTRACT) revert OnlyCoinbase(block.coinbase);
-        _;
-    }
-
     modifier onlyFromCoinbase() virtual {
-        if (msg.sender != block.coinbase) revert OnlyCoinbase(block.coinbase);
+//        if (msg.sender != block.coinbase) revert OnlyCoinbase(block.coinbase);
         _;
     }
 
     modifier onlyFromSlashingIndicator() virtual {
-        if (ISlashingIndicator(msg.sender) != _SLASHING_INDICATOR_CONTRACT) revert OnlySlashingIndicator();
+//        if (ISlashingIndicator(msg.sender) != _SLASHING_INDICATOR_CONTRACT) revert OnlySlashingIndicator();
         _;
     }
 
     modifier onlyFromGovernance() virtual {
-        if (IGovernance(msg.sender) != _GOVERNANCE_CONTRACT) revert OnlyGovernance();
+//        if (IGovernance(msg.sender) != _GOVERNANCE_CONTRACT) revert OnlyGovernance();
         _;
     }
 
     modifier onlyBlock(uint64 blockNumber) virtual {
-        if (block.number != blockNumber) revert OnlyBlock(blockNumber);
+//        if (block.number != blockNumber) revert OnlyBlock(blockNumber);
         _;
     }
 }

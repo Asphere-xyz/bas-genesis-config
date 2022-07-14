@@ -64,7 +64,7 @@ contract("Staking", async (accounts) => {
     result = await parlia.getValidatorDelegation(validator1, staker1);
     assert.equal(result.delegatedAmount.toString(), '2000000000000000000')
   });
-  it("user should be able undelegate after undelegate", async () => {
+  it("user should be able undelegate after delegate", async () => {
     const {parlia} = await newMockContract(owner)
     await parlia.addValidator(validator1, '0x');
     await parlia.delegate(validator1, {from: staker1, value: '3000000000000000000'}); // 3.0

@@ -7,12 +7,12 @@ contract Multicall {
         results = new bytes[](data.length);
         for (uint256 i = 0; i < data.length; i++) {
             // this is an optimized a bit multicall w/o using of Address library (it safes a lot of bytecode)
-            results[i] = _selfDelegateCall(data[i]);
+            results[i] = _delegateCall(data[i]);
         }
         return results;
     }
 
-    function _selfDelegateCall(bytes memory data) internal returns (bytes memory _result) {
+    function _delegateCall(bytes memory data) internal returns (bytes memory _result) {
         (bool success, bytes memory returnData) = address(this).delegatecall(data);
         if (success) {
             return returnData;

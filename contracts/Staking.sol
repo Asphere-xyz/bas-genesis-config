@@ -9,33 +9,33 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 
 import "./InjectorContextHolder.sol";
 
-abstract contract StakingStorageLayout is InjectorContextHolder {
+abstract contract StakingStorageLayout is InjectorContextHolder, IStakingEvents {
 
     /**
-     * This constant indicates precision of storing compact balances in the storage or floating point. Since default
-     * balance precision is 256 bits it might gain some overhead on the storage because we don't need to store such huge
-     * amount range. That is why we compact balances in uint112 values instead of uint256. By managing this value
-     * you can set the precision of your balances, aka min and max possible staking amount. This value depends
-     * mostly on your asset price in USD, for example ETH costs 4000$ then if we use 1 ether precision it takes 4000$
-     * as min amount that might be problematic for users to do the stake. We can set 1 gwei precision and in this case
-     * we increase min staking amount in 1e9 times, but also decreases max staking amount or total amount of staked assets.
-     *
-     * Here is an universal formula, if your asset is cheap in USD equivalent, like ~1$, then use 1 ether precision,
-     * otherwise it might be better to use 1 gwei precision or any other amount that your want.
-     *
-     * Also be careful with setting `minValidatorStakeAmount` and `minStakingAmount`, because these values has
-     * the same precision as specified here. It means that if you set precision 1 ether, then min staking amount of 10
-     * tokens should have 10 raw value. For 1 gwei precision 10 tokens min amount should be stored as 10000000000.
-     *
-     * For the 112 bits we have ~32 decimals lg(2**112)=33.71 (lets round to 32 for simplicity). We split this amount
-     * into integer (24) and for fractional (8) parts. It means that we can have only 8 decimals after zero.
-     *
-     * Based in current params we have next min/max values:
-     * - min staking amount: 0.00000001 or 1e-8
-     * - max staking amount: 1000000000000000000000000 or 1e+24
-     *
-     * WARNING: precision must be a 1eN format (A=1, N>0)
-     */
+    * This constant indicates precision of storing compact balances in the storage or floating point. Since default
+    * balance precision is 256 bits it might gain some overhead on the storage because we don't need to store such huge
+    * amount range. That is why we compact balances in uint112 values instead of uint256. By managing this value
+    * you can set the precision of your balances, aka min and max possible staking amount. This value depends
+    * mostly on your asset price in USD, for example ETH costs 4000$ then if we use 1 ether precision it takes 4000$
+    * as min amount that might be problematic for users to do the stake. We can set 1 gwei precision and in this case
+    * we increase min staking amount in 1e9 times, but also decreases max staking amount or total amount of staked assets.
+    *
+    * Here is an universal formula, if your asset is cheap in USD equivalent, like ~1$, then use 1 ether precision,
+    * otherwise it might be better to use 1 gwei precision or any other amount that your want.
+    *
+    * Also be careful with setting `minValidatorStakeAmount` and `minStakingAmount`, because these values has
+    * the same precision as specified here. It means that if you set precision 1 ether, then min staking amount of 10
+    * tokens should have 10 raw value. For 1 gwei precision 10 tokens min amount should be stored as 10000000000.
+    *
+    * For the 112 bits we have ~32 decimals lg(2**112)=33.71 (lets round to 32 for simplicity). We split this amount
+    * into integer (24) and for fractional (8) parts. It means that we can have only 8 decimals after zero.
+    *
+    * Based in current params we have next min/max values:
+    * - min staking amount: 0.00000001 or 1e-8
+    * - max staking amount: 1000000000000000000000000 or 1e+24
+    *
+    * WARNING: precision must be a 1eN format (A=1, N>0)
+    */
     uint256 internal constant BALANCE_COMPACT_PRECISION = 1e10;
     /**
      * Here is min/max commission rates. Lets don't allow to set more than 30% of validator commission, because it's
@@ -59,22 +59,6 @@ abstract contract StakingStorageLayout is InjectorContextHolder {
      * execute one by one. Somtimes gas might not be enough for the tx execution.
      */
     uint32 internal constant CLAIM_BEFORE_GAS = 100_000;
-
-    // validator events
-    event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
-    event ValidatorModified(address indexed validator, address owner, uint8 status, uint16 commissionRate);
-    event ValidatorRemoved(address indexed validator);
-    event ValidatorOwnerClaimed(address indexed validator, uint256 amount, uint64 epoch);
-    event ValidatorSlashed(address indexed validator, uint32 slashes, uint64 epoch);
-    event ValidatorJailed(address indexed validator, uint64 epoch);
-    event ValidatorDeposited(address indexed validator, uint256 amount, uint64 epoch);
-    event ValidatorReleased(address indexed validator, uint64 epoch);
-
-    // staker events
-    event Delegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
-    event Undelegated(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
-    event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
-    event Redelegated(address indexed validator, address indexed staker, uint256 amount, uint256 dust, uint64 epoch);
 
     enum ValidatorStatus {
         NotFound,
@@ -211,7 +195,22 @@ abstract contract StakingStorageLayout is InjectorContextHolder {
     }
 }
 
-contract StakingRewardDistributionLib is StakingStorageLayout, ERC2771Context, IStakingRewardDistribution {
+abstract contract StakingLibMixin {
+
+    error MethodNotFound();
+
+    fallback() external payable {
+//        revert("method not found");
+        revert MethodNotFound();
+    }
+
+    receive() external payable {
+//        revert("method not found");
+        revert MethodNotFound();
+    }
+}
+
+contract StakingRewardDistributionLib is StakingStorageLayout, StakingLibMixin, IStakingRewardDistribution {
 
     constructor(
         IStaking stakingContract,
@@ -231,7 +230,7 @@ contract StakingRewardDistributionLib is StakingStorageLayout, ERC2771Context, I
         chainConfigContract,
         runtimeUpgradeContract,
         deployerProxyContract
-    ) ERC2771Context(msg.sender) {
+    ) {
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
@@ -247,11 +246,11 @@ contract StakingRewardDistributionLib is StakingStorageLayout, ERC2771Context, I
     }
 
     function delegate(address validatorAddress) payable external override {
-        _delegateTo(_msgSender(), validatorAddress, msg.value);
+        _delegateTo(msg.sender, validatorAddress, msg.value);
     }
 
     function undelegate(address validatorAddress, uint256 amount) external override {
-        _undelegateFrom(_msgSender(), validatorAddress, amount);
+        _undelegateFrom(msg.sender, validatorAddress, amount);
     }
 
     function getValidatorFee(address validatorAddress) external override view returns (uint256) {
@@ -278,7 +277,7 @@ contract StakingRewardDistributionLib is StakingStorageLayout, ERC2771Context, I
         // make sure validator exists at least
         Validator storage validator = _validatorsMap[validatorAddress];
         // only validator owner can claim deposit fee
-        require(_msgSender() == validator.ownerAddress, "only owner");
+        require(msg.sender == validator.ownerAddress, "only owner");
         // claim all validator fees
         _claimValidatorOwnerRewards(validator, _currentEpoch());
     }
@@ -293,12 +292,12 @@ contract StakingRewardDistributionLib is StakingStorageLayout, ERC2771Context, I
 
     function claimDelegatorFee(address validatorAddress) external override {
         // claim all confirmed delegator fees including undelegates
-        _transferDelegatorRewards(validatorAddress, _msgSender(), _currentEpoch(), true, true);
+        _transferDelegatorRewards(validatorAddress, msg.sender, _currentEpoch(), true, true);
     }
 
     function claimPendingUndelegates(address validator) external override {
         // claim only pending undelegates
-        _transferDelegatorRewards(validator, _msgSender(), _currentEpoch(), false, true);
+        _transferDelegatorRewards(validator, msg.sender, _currentEpoch(), false, true);
     }
 
     function calcAvailableForRedelegateAmount(address validator, address delegator) external override view returns (uint256 amountToStake, uint256 rewardsDust) {
@@ -308,7 +307,7 @@ contract StakingRewardDistributionLib is StakingStorageLayout, ERC2771Context, I
 
     function redelegateDelegatorFee(address validator) external override {
         // claim rewards in the redelegate mode (check function code for more info)
-        _redelegateDelegatorRewards(validator, _msgSender(), _currentEpoch(), true, false);
+        _redelegateDelegatorRewards(validator, msg.sender, _currentEpoch(), true, false);
     }
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
@@ -560,7 +559,7 @@ contract StakingRewardDistributionLib is StakingStorageLayout, ERC2771Context, I
     }
 }
 
-contract StakingValidatorRegistryLib is StakingStorageLayout, ERC2771Context, IStakingValidatorManagement {
+contract StakingValidatorRegistryLib is StakingStorageLayout, StakingLibMixin, IStakingValidatorManagement {
 
     constructor(
         IStaking stakingContract,
@@ -580,7 +579,7 @@ contract StakingValidatorRegistryLib is StakingStorageLayout, ERC2771Context, IS
         chainConfigContract,
         runtimeUpgradeContract,
         deployerProxyContract
-    ) ERC2771Context(msg.sender) {
+    ) {
     }
 
     function getValidatorStatus(address validatorAddress) external view returns (
@@ -644,7 +643,7 @@ contract StakingValidatorRegistryLib is StakingStorageLayout, ERC2771Context, IS
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status == ValidatorStatus.Jail, "bad status");
         // only validator owner
-        require(_msgSender() == validator.ownerAddress, "only owner");
+        require(msg.sender == validator.ownerAddress, "only owner");
         require(_currentEpoch() >= validator.jailedBefore, "still in jail");
         // release validator from jail
         _releaseValidatorFromJail(validator);
@@ -675,7 +674,7 @@ contract StakingValidatorRegistryLib is StakingStorageLayout, ERC2771Context, IS
         require(initialStake >= _CHAIN_CONFIG_CONTRACT.getMinValidatorStakeAmount(), "too low");
         require(initialStake % BALANCE_COMPACT_PRECISION == 0, "no remainder");
         // add new validator as pending
-        _addValidator(validatorAddress, votingKey, _msgSender(), ValidatorStatus.Pending, commissionRate, initialStake, _nextEpoch());
+        _addValidator(validatorAddress, votingKey, msg.sender, ValidatorStatus.Pending, commissionRate, initialStake, _nextEpoch());
     }
 
     function addValidator(address account, bytes calldata votingKey) external onlyFromGovernance virtual {
@@ -738,7 +737,7 @@ contract StakingValidatorRegistryLib is StakingStorageLayout, ERC2771Context, IS
         require(commissionRate >= COMMISSION_RATE_MIN_VALUE && commissionRate <= COMMISSION_RATE_MAX_VALUE, "bad commission");
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "not found");
-        require(validator.ownerAddress == _msgSender(), "only owner");
+        require(validator.ownerAddress == msg.sender, "only owner");
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, _nextEpoch());
         snapshot.commissionRate = commissionRate;
         _validatorsMap[validatorAddress] = validator;
@@ -747,7 +746,7 @@ contract StakingValidatorRegistryLib is StakingStorageLayout, ERC2771Context, IS
 
     function changeValidatorOwner(address validatorAddress, address newOwner) external {
         Validator memory validator = _validatorsMap[validatorAddress];
-        require(validator.ownerAddress == _msgSender(), "only owner");
+        require(validator.ownerAddress == msg.sender, "only owner");
         require(_validatorOwners[newOwner] == address(0x00), "owner in use");
         delete _validatorOwners[validator.ownerAddress];
         validator.ownerAddress = newOwner;
@@ -937,35 +936,36 @@ contract Staking is StakingStorageLayout, Proxy {
         require(address(this).balance == totalStakes);
     }
 
-    function _delegate(address /*implementation*/) internal virtual override {
-        address validatorRegistryLib = address(_validatorRegistryLib);
-        address rewardDistributionLib = address(_rewardDistributionLib);
+    error MethodNotFound();
+
+    function _delegate(address implementation) internal virtual override {
         assembly {
-        // first try
+            // call contract and store result at 0 address
             calldatacopy(0, 0, calldatasize())
-            let result := delegatecall(gas(), validatorRegistryLib, 0, calldatasize(), 0, 0)
+            let result := delegatecall(gas(), implementation, 0, calldatasize(), 0, 0)
             returndatacopy(0, 0, returndatasize())
+            // check possible results
             switch result
             case 0 {
-                if gt(returndatasize(), 0) {
+                // if return code equal to keccak256("MethodNotFound()") then don't revert
+                let try_again := eq(shr(0xe0, mload(0)), 0x06c78984)
+                // revert only if we can't have next try
+                if iszero(try_again) {
                     revert(0, returndatasize())
                 }
             }
             default {
                 return(0, returndatasize())
             }
-        // second try
-            calldatacopy(0, 0, calldatasize())
-            result := delegatecall(gas(), rewardDistributionLib, 0, calldatasize(), 0, 0)
-            returndatacopy(0, 0, returndatasize())
-            switch result
-            case 0 {
-                revert(0, returndatasize())
-            }
-            default {
-                return(0, returndatasize())
-            }
         }
+    }
+
+    function _fallback() internal virtual override {
+        // try both of addresses
+        _delegate(address(_validatorRegistryLib));
+        _delegate(address(_rewardDistributionLib));
+        // revert if not found
+        revert MethodNotFound();
     }
 
     function _implementation() internal view override virtual returns (address) {

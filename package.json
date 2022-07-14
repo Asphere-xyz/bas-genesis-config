@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "compile": "truffle compile --all",
-    "test": "truffle test",
+    "test": "truffle test --stacktrace-extra -b",
+    "test:develop": "truffle test --stacktrace-extra -b --network=develop",
+    "test:ganache": "truffle test --stacktrace-extra -b --network=ganache",
     "coverage": "truffle run coverage",
     "report": "WITH_GAS_REPOTER=true truffle test"
   },
