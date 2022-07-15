@@ -343,6 +343,7 @@ contract("Staking", async (accounts) => {
     await parlia.addValidator(validator2, '0x');
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
+    await waitForNextEpoch(parlia);
     // slash for 19 times
     for (let i = 0; i < 19; i++) {
       await parlia.slash(validator2, {from: validator1});

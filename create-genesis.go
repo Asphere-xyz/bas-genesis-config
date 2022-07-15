@@ -124,8 +124,8 @@ var stakingRawArtifact []byte
 //go:embed build/contracts/StakingPool.json
 var stakingPoolRawArtifact []byte
 
-//go:embed build/contracts/ChainConfig.json
-var chainConfigRawArtifact []byte
+//go:embed build/contracts/StakingConfig.json
+var stakingConfigRawArtifact []byte
 
 //go:embed build/contracts/SlashingIndicator.json
 var slashingIndicatorRawArtifact []byte
@@ -274,7 +274,7 @@ func createVirtualMachine(genesis *core.Genesis, systemContract common.Address, 
 	)
 	chainConfig := *genesis.Config
 	// make copy of chain config with disabled EIP-158 (for testing period)
-	chainConfig.EIP158Block = nil
+	//chainConfig.EIP158Block = nil
 	return statedb, vm.NewEVM(blockContext, txContext, statedb, &chainConfig, vm.Config{})
 }
 
@@ -356,7 +356,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		initialStakes,
 		uint16(config.CommissionRate),
 	}, initialStakeTotal)
-	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256", "uint16"}, []interface{}{
+	invokeConstructorOrPanic(genesis, chainConfigAddress, stakingConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256", "uint16"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
 		config.ConsensusParams.MisdemeanorThreshold,

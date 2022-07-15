@@ -5,7 +5,7 @@ const AbiCoder = require('web3-eth-abi');
 const RLP = require('rlp');
 
 const InjectorContextHolder = artifacts.require("InjectorContextHolder");
-const ChainConfig = artifacts.require("ChainConfig");
+const StakingConfig = artifacts.require("StakingConfig");
 const Staking = artifacts.require("Staking");
 const SlashingIndicator = artifacts.require("SlashingIndicator");
 const SystemReward = artifacts.require("SystemReward");
@@ -16,14 +16,14 @@ const RuntimeProxy = artifacts.require("RuntimeProxy");
 const DeployerProxy = artifacts.require("DeployerProxy");
 const IStaking = artifacts.require("IStaking");
 
-const FakeChainConfig = artifacts.require("FakeChainConfig");
-const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
-const FakeGovernance = artifacts.require("FakeGovernance");
-const FakeRuntimeUpgrade = artifacts.require("FakeRuntimeUpgrade");
-const FakeSlashingIndicator = artifacts.require("FakeSlashingIndicator");
-const FakeStaking = artifacts.require("FakeStaking");
-const FakeStakingPool = artifacts.require("FakeStakingPool");
-const FakeSystemReward = artifacts.require("FakeSystemReward");
+const StakingConfigUnsafe = artifacts.require("StakingConfigUnsafe");
+const StakingUnsafe = artifacts.require("StakingUnsafe");
+const DeployerProxyUnsafe = artifacts.require("DeployerProxyUnsafe");
+const GovernanceUnsafe = artifacts.require("GovernanceUnsafe");
+const RuntimeUpgradeUnsafe = artifacts.require("RuntimeUpgradeUnsafe");
+const SlashingIndicatorUnsafe = artifacts.require("SlashingIndicatorUnsafe");
+const StakingPoolUnsafe = artifacts.require("StakingPoolUnsafe");
+const SystemRewardUnsafe = artifacts.require("SystemRewardUnsafe");
 
 const DEFAULT_MOCK_PARAMS = {
   systemTreasury: '0x0000000000000000000000000000000000000000',
@@ -42,8 +42,8 @@ const DEFAULT_MOCK_PARAMS = {
 };
 
 const DEFAULT_CONTRACT_TYPES = {
-  ChainConfig: ChainConfig,
-  Staking: Staking,
+  ChainConfig: StakingConfig,
+  Staking: StakingUnsafe,
   SlashingIndicator: SlashingIndicator,
   SystemReward: SystemReward,
   Governance: Governance,
@@ -51,12 +51,6 @@ const DEFAULT_CONTRACT_TYPES = {
   RuntimeUpgrade: RuntimeUpgrade,
   DeployerProxy: DeployerProxy,
 };
-
-const encodeInitializer = (types, args) => {
-  const sig = keccak256(Buffer.from('initialize(' + types.join(',') + ')')).toString('hex').substring(0, 8),
-    abi = AbiCoder.encodeParameters(types, args).substring(2)
-  return `0x${sig}${abi}`
-}
 
 const newContractUsingTypes = async (owner, params, types = {}) => {
   const {
@@ -97,6 +91,11 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   }
   const runtimeUpgradeAddress = systemAddresses[6];
   // encode constructor for injector
+  const encodeInitializer = (types, args) => {
+    const sig = keccak256(Buffer.from('initialize(' + types.join(',') + ')')).toString('hex').substring(0, 8),
+      abi = AbiCoder.encodeParameters(types, args).substring(2)
+    return `0x${sig}${abi}`
+  }
   const injectorArgs = AbiCoder.encodeParameters(['address', 'address', 'address', 'address', 'address', 'address', 'address', 'address',], systemAddresses)
   const injectorBytecode = ({bytecode}) => {
     return bytecode + injectorArgs.substr(2)
@@ -152,14 +151,14 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
 
 const newMockContract = async (owner, params = {}) => {
   return newContractUsingTypes(owner, params, {
-    ChainConfig: FakeChainConfig,
-    DeployerProxy: FakeDeployerProxy,
-    Governance: FakeGovernance,
-    RuntimeUpgrade: FakeRuntimeUpgrade,
-    SlashingIndicator: FakeSlashingIndicator,
-    Staking: Staking,
-    StakingPool: FakeStakingPool,
-    SystemReward: FakeSystemReward,
+    ChainConfig: StakingConfigUnsafe,
+    DeployerProxy: DeployerProxyUnsafe,
+    Governance: GovernanceUnsafe,
+    RuntimeUpgrade: RuntimeUpgradeUnsafe,
+    SlashingIndicator: SlashingIndicatorUnsafe,
+    Staking: StakingUnsafe,
+    StakingPool: StakingPoolUnsafe,
+    SystemReward: SystemRewardUnsafe,
   });
 }
 

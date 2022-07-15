@@ -4,17 +4,20 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/utils/StorageSlot.sol";
 
-import "./libs/Multicall.sol";
+import "./common/RetryMixin.sol";
+import "./common/RetryableProxy.sol";
+import "./common/Multicall.sol";
 
-import "./interfaces/IChainConfig.sol";
-import "./interfaces/IGovernance.sol";
-import "./interfaces/ISlashingIndicator.sol";
-import "./interfaces/ISystemReward.sol";
-import "./interfaces/IStaking.sol";
-import "./interfaces/IRuntimeUpgrade.sol";
-import "./interfaces/IStakingPool.sol";
-import "./interfaces/IInjectorContextHolder.sol";
-import "./interfaces/IDeployerProxy.sol";
+import "./IInjectorContextHolder.sol";
+
+import "./staking/interfaces/IStakingConfig.sol";
+import "./staking/interfaces/IStaking.sol";
+import "./staking/interfaces/IStakingPool.sol";
+import "./runtime/interfaces/IRuntimeUpgrade.sol";
+import "./acl/interfaces/IDeployerProxy.sol";
+import "./parlia/interfaces/IGovernance.sol";
+import "./parlia/interfaces/ISlashingIndicator.sol";
+import "./parlia/interfaces/ISystemReward.sol";
 
 abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorContextHolder {
 
@@ -28,7 +31,7 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
     ISystemReward internal immutable _SYSTEM_REWARD_CONTRACT;
     IStakingPool internal immutable _STAKING_POOL_CONTRACT;
     IGovernance internal immutable _GOVERNANCE_CONTRACT;
-    IChainConfig internal immutable _CHAIN_CONFIG_CONTRACT;
+    IStakingConfig internal immutable _STAKING_CONFIG_CONTRACT;
     IRuntimeUpgrade internal immutable _RUNTIME_UPGRADE_CONTRACT;
     IDeployerProxy internal immutable _DEPLOYER_PROXY_CONTRACT;
 
@@ -51,7 +54,7 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
         ISystemReward systemRewardContract,
         IStakingPool stakingPoolContract,
         IGovernance governanceContract,
-        IChainConfig chainConfigContract,
+        IStakingConfig chainConfigContract,
         IRuntimeUpgrade runtimeUpgradeContract,
         IDeployerProxy deployerProxyContract
     ) {
@@ -60,7 +63,7 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
         _SYSTEM_REWARD_CONTRACT = systemRewardContract;
         _STAKING_POOL_CONTRACT = stakingPoolContract;
         _GOVERNANCE_CONTRACT = governanceContract;
-        _CHAIN_CONFIG_CONTRACT = chainConfigContract;
+        _STAKING_CONFIG_CONTRACT = chainConfigContract;
         _RUNTIME_UPGRADE_CONTRACT = runtimeUpgradeContract;
         _DEPLOYER_PROXY_CONTRACT = deployerProxyContract;
     }
@@ -82,22 +85,22 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
     }
 
     modifier onlyFromCoinbase() virtual {
-//        if (msg.sender != block.coinbase) revert OnlyCoinbase(block.coinbase);
+        if (msg.sender != block.coinbase) revert OnlyCoinbase(block.coinbase);
         _;
     }
 
     modifier onlyFromSlashingIndicator() virtual {
-//        if (ISlashingIndicator(msg.sender) != _SLASHING_INDICATOR_CONTRACT) revert OnlySlashingIndicator();
+        if (ISlashingIndicator(msg.sender) != _SLASHING_INDICATOR_CONTRACT) revert OnlySlashingIndicator();
         _;
     }
 
     modifier onlyFromGovernance() virtual {
-//        if (IGovernance(msg.sender) != _GOVERNANCE_CONTRACT) revert OnlyGovernance();
+        if (IGovernance(msg.sender) != _GOVERNANCE_CONTRACT) revert OnlyGovernance();
         _;
     }
 
     modifier onlyBlock(uint64 blockNumber) virtual {
-//        if (block.number != blockNumber) revert OnlyBlock(blockNumber);
+        if (block.number != blockNumber) revert OnlyBlock(blockNumber);
         _;
     }
 }
