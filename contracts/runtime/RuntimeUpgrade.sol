@@ -18,25 +18,7 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     // list of new deployed system smart contracts
     address[] internal _deployedSystemContracts;
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) InjectorContextHolder(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
     }
 
     function isEIP1967() external pure returns (bool) {
@@ -79,20 +61,21 @@ contract RuntimeUpgrade is InjectorContextHolder, IRuntimeUpgrade {
     }
 
     function getSystemContracts() public view returns (address[] memory) {
-        address[] memory result = new address[](8 + _deployedSystemContracts.length);
-        // BSC-compatible
+        address[] memory result = new address[](10 + _deployedSystemContracts.length);
+        // put system smart contracts
         result[0] = address(_STAKING_CONTRACT);
         result[1] = address(_SLASHING_INDICATOR_CONTRACT);
         result[2] = address(_SYSTEM_REWARD_CONTRACT);
-        // BAS-defined
         result[3] = address(_STAKING_POOL_CONTRACT);
         result[4] = address(_GOVERNANCE_CONTRACT);
         result[5] = address(_STAKING_CONFIG_CONTRACT);
         result[6] = address(_RUNTIME_UPGRADE_CONTRACT);
         result[7] = address(_DEPLOYER_PROXY_CONTRACT);
+        result[8] = address(_RELAY_HUB_CONTRACT);
+        result[9] = address(_CROSS_CHAIN_BRIDGE_CONTRACT);
         // copy deployed system smart contracts
         for (uint256 i = 0; i < _deployedSystemContracts.length; i++) {
-            result[8 + i] = _deployedSystemContracts[i];
+            result[10 + i] = _deployedSystemContracts[i];
         }
         return result;
     }

@@ -5,25 +5,7 @@ import "../Governance.sol";
 
 contract GovernanceUnsafe is Governance {
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) Governance(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) Governance(constructorArgs) {
     }
 
     modifier onlyFromCoinbase() override {

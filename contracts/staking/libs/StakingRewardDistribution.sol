@@ -5,25 +5,7 @@ import "./StakingStorageLayout.sol";
 
 contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStakingRewardDistribution {
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) InjectorContextHolder(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
     }
 
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (

@@ -37,25 +37,7 @@ contract SystemReward is InjectorContextHolder, ISystemReward {
     // distribution share between holders
     DistributionShare[] internal _distributionShares;
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) InjectorContextHolder(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
     }
 
     function initialize(address[] calldata accounts, uint16[] calldata shares) external initializer {

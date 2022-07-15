@@ -5,25 +5,7 @@ import "../RuntimeUpgrade.sol";
 
 contract RuntimeUpgradeUnsafe is RuntimeUpgrade {
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) RuntimeUpgrade(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) RuntimeUpgrade(constructorArgs) {
     }
 
     modifier onlyFromCoinbase() override {

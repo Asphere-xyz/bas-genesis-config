@@ -4,19 +4,17 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/utils/structs/BitMaps.sol";
-import "@openzeppelin/contracts/utils/Multicall.sol";
 
 import "./interfaces/IProofVerificationFunction.sol";
 import "./interfaces/IRelayHub.sol";
 import "./interfaces/IValidatorChecker.sol";
-import "./interfaces/IBridgeRegistry.sol";
 
-import "../staking/interfaces/IStaking.sol";
+import "../InjectorContextHolder.sol";
 
 import "../common/BitUtils.sol";
 import "../common/MerklePatriciaProof.sol";
 
-contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
+contract RelayHub is InjectorContextHolder, IRelayHub, IValidatorChecker {
 
     using EnumerableSet for EnumerableSet.AddressSet;
     using BitMaps for BitMaps.BitMap;
@@ -24,9 +22,8 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
     bytes32 internal constant ZERO_BLOCK_HASH = bytes32(0x00);
     address internal constant ZERO_ADDRESS = address(0x00);
 
-    // lets keep default verification function as zero to make it manageable by BAS relay hub itself
+    // lets keep default verification function as zero to make it manageable by chain relay hub itself
     IProofVerificationFunction internal constant DEFAULT_VERIFICATION_FUNCTION = IProofVerificationFunction(ZERO_ADDRESS);
-    IStaking internal constant ZERO_STAKING_ADDRESS = IStaking(ZERO_ADDRESS);
 
     event ChainRegistered(uint256 indexed chainId, address[] initValidatorSet);
     event ValidatorSetUpdated(uint256 indexed chainId, address[] newValidatorSet);
@@ -43,18 +40,10 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
         uint64 latestKnownEpoch;
     }
 
-    enum ChainStatus {
-        NotFound,
-        Verifying,
-        Active
-    }
+    enum ChainStatus {NotFound, Verifying, Active}
+    enum ChainType {Root, Child}
 
-    enum ChainType {
-        BSC,
-        BAS
-    }
-
-    struct BAS {
+    struct RegisteredChain {
         ChainStatus chainStatus;
         ChainType chainType;
         IProofVerificationFunction verificationFunction;
@@ -62,23 +51,30 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
         uint32 epochLength;
     }
 
-    // default verification function for certified chains
-    IProofVerificationFunction internal _defaultVerificationFunction;
-    IStaking internal _stakingContract;
-    // mapping with all registered chains
-    mapping(uint256 => ValidatorHistory) _validatorHistories;
-    mapping(uint256 => BAS) internal _registeredChains;
+    // default verification functions
+    IProofVerificationFunction internal _rootDefaultVerificationFunction;
+    IProofVerificationFunction internal _childDefaultVerificationFunction;
 
-    constructor(IProofVerificationFunction defaultVerificationFunction, IStaking stakingContract) {
-        _defaultVerificationFunction = defaultVerificationFunction;
-        _stakingContract = stakingContract;
+    // mapping with all registered chains
+    mapping(uint256 => ValidatorHistory) internal _validatorHistories;
+    mapping(uint256 => RegisteredChain) internal _registeredChains;
+
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
+    }
+
+    function initialize(
+        IProofVerificationFunction rootDefaultVerificationFunction,
+        IProofVerificationFunction childDefaultVerificationFunction
+    ) external initializer {
+        _rootDefaultVerificationFunction = rootDefaultVerificationFunction;
+        _childDefaultVerificationFunction = childDefaultVerificationFunction;
     }
 
     function getBridgeAddress(uint256 chainId) external view returns (address) {
         return _registeredChains[chainId].bridgeAddress;
     }
 
-    function registerCertifiedBAS(
+    function registerCertifiedChain(
         uint256 chainId,
         bytes calldata rawGenesisBlock,
         address bridgeAddress,
@@ -90,7 +86,7 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
             rawGenesisBlock,
             ZERO_BLOCK_HASH,
             ChainStatus.Verifying,
-            ChainType.BAS,
+            ChainType.Child,
             bridgeAddress,
             epochLength
         );
@@ -109,13 +105,13 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
             rawCheckpointBlock,
             checkpointHash,
             ChainStatus.Verifying,
-            ChainType.BAS,
+            ChainType.Child,
             bridgeAddress,
             epochLength
         );
     }
 
-    function registerBAS(
+    function registerChain(
         uint256 chainId,
         IProofVerificationFunction verificationFunction,
         bytes calldata rawGenesisBlock,
@@ -128,7 +124,7 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
             rawGenesisBlock,
             ZERO_BLOCK_HASH,
             ChainStatus.Verifying,
-            ChainType.BAS,
+            ChainType.Child,
             bridgeAddress,
             epochLength
         );
@@ -146,7 +142,7 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
             rawGenesisBlock,
             ZERO_BLOCK_HASH,
             ChainStatus.Verifying,
-            ChainType.BSC,
+            ChainType.Root,
             bridgeAddress,
             epochLength
         );
@@ -162,26 +158,29 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
         address bridgeAddress,
         uint32 epochLength
     ) internal {
-        BAS memory bas = _registeredChains[chainId];
-        require(bas.chainStatus == ChainStatus.NotFound || bas.chainStatus == ChainStatus.Verifying, "already registered");
+        // register new chain
+        RegisteredChain memory chain = _registeredChains[chainId];
+        require(chain.chainStatus == ChainStatus.NotFound || chain.chainStatus == ChainStatus.Verifying, "already registered");
+        chain.chainStatus = defaultStatus;
+        chain.chainType = chainType;
+        chain.verificationFunction = verificationFunction;
+        chain.bridgeAddress = bridgeAddress;
+        chain.epochLength = epochLength;
+        _registeredChains[chainId] = chain;
+        // parse genesis or checkpoint block
         (
         bytes32 blockHash,
         address[] memory initialValidatorSet,
         uint64 blockNumber
-        ) = _verificationFunction(verificationFunction).verifyBlockWithoutQuorum(chainId, rawCheckpointBlock, epochLength);
+        ) = _verificationFunction(chain).verifyBlockWithoutQuorum(chainId, rawCheckpointBlock, epochLength);
         if (checkpointHash != ZERO_BLOCK_HASH) {
             require(checkpointHash == blockHash, "bad checkpoint hash");
         }
-        bas.chainStatus = defaultStatus;
-        bas.chainType = chainType;
-        bas.verificationFunction = verificationFunction;
-        bas.bridgeAddress = bridgeAddress;
-        bas.epochLength = epochLength;
+        // init first validator set
         {
             ValidatorHistory storage validatorHistory = _validatorHistories[chainId];
             _updateActiveValidatorSet(validatorHistory, initialValidatorSet, blockNumber / epochLength);
         }
-        _registeredChains[chainId] = bas;
         emit ChainRegistered(chainId, initialValidatorSet);
     }
 
@@ -253,28 +252,28 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
     }
 
     function updateValidatorSet(uint256 chainId, bytes[] calldata blockProofs) external {
-        BAS memory bas = _registeredChains[chainId];
-        require(bas.chainStatus == ChainStatus.Verifying || bas.chainStatus == ChainStatus.Active, "not active");
+        RegisteredChain memory chain = _registeredChains[chainId];
+        require(chain.chainStatus == ChainStatus.Verifying || chain.chainStatus == ChainStatus.Active, "not active");
         ValidatorHistory storage validatorHistory = _validatorHistories[chainId];
-        (address[] memory newValidatorSet, uint64 epochNumber) = _verificationFunction(bas.verificationFunction).verifyValidatorTransition(chainId, blockProofs, bas.epochLength, this);
-        bas.chainStatus = ChainStatus.Active;
+        (address[] memory newValidatorSet, uint64 epochNumber) = _verificationFunction(chain).verifyValidatorTransition(chainId, blockProofs, chain.epochLength, this);
+        chain.chainStatus = ChainStatus.Active;
         _updateActiveValidatorSet(validatorHistory, newValidatorSet, epochNumber);
-        _registeredChains[chainId] = bas;
+        _registeredChains[chainId] = chain;
         emit ValidatorSetUpdated(chainId, newValidatorSet);
     }
 
     function updateValidatorSetUsingEpochBlocks(uint256 chainId, bytes[] calldata blockProofs) external {
-        BAS memory bas = _registeredChains[chainId];
-        require(bas.chainStatus == ChainStatus.Verifying || bas.chainStatus == ChainStatus.Active, "not active");
+        RegisteredChain memory chain = _registeredChains[chainId];
+        require(chain.chainStatus == ChainStatus.Verifying || chain.chainStatus == ChainStatus.Active, "not active");
         ValidatorHistory storage validatorHistory = _validatorHistories[chainId];
-        IProofVerificationFunction pvf = _verificationFunction(bas.verificationFunction);
+        IProofVerificationFunction pvf = _verificationFunction(chain);
         // the key magic is that we can skip confirmations for epoch if it doesn't change validator set
         bytes32 validatorSnapshot;
         uint256 calldataOffset = 0;
         uint256 calldataSize = 0;
         for (uint256 i = 0; i < blockProofs.length; i++) {
-            (, address[] memory validatorSet, uint64 blockNumber) = pvf.verifyBlockWithoutQuorum(chainId, blockProofs[i], bas.epochLength);
-            if (blockNumber % bas.epochLength != 0) {
+            (, address[] memory validatorSet, uint64 blockNumber) = pvf.verifyBlockWithoutQuorum(chainId, blockProofs[i], chain.epochLength);
+            if (blockNumber % chain.epochLength != 0) {
                 break;
             }
             // increase block proof offset (0x20 is length of array)
@@ -282,7 +281,7 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
             calldataSize++;
             // calc new validator snapshot and block epoch
             bytes32 newValidatorSnapshot = keccak256(abi.encode(validatorSet));
-            uint64 blockEpoch = blockNumber / bas.epochLength;
+            uint64 blockEpoch = blockNumber / chain.epochLength;
             // first block must start new epoch
             if (i == 0) {
                 validatorSnapshot = newValidatorSnapshot;
@@ -300,10 +299,10 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
             blockProofsWithOffset.length := sub(blockProofs.length, calldataSize)
         }
 
-        (address[] memory newValidatorSet, uint64 epochNumber) = pvf.verifyValidatorTransition(chainId, blockProofsWithOffset, bas.epochLength, this);
-        bas.chainStatus = ChainStatus.Active;
+        (address[] memory newValidatorSet, uint64 epochNumber) = pvf.verifyValidatorTransition(chainId, blockProofsWithOffset, chain.epochLength, this);
+        chain.chainStatus = ChainStatus.Active;
         _updateActiveValidatorSet(validatorHistory, newValidatorSet, epochNumber);
-        _registeredChains[chainId] = bas;
+        _registeredChains[chainId] = chain;
         emit ValidatorSetUpdated(chainId, newValidatorSet);
     }
 
@@ -313,25 +312,25 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
         bytes32 checkpointHash,
         bytes[] calldata signatures
     ) external {
-        // make sure bas is registered and active
-        BAS memory bas = _registeredChains[chainId];
-        require(bas.chainStatus == ChainStatus.Verifying || bas.chainStatus == ChainStatus.Active, "not active");
+        // make sure chain is registered and active
+        RegisteredChain memory chain = _registeredChains[chainId];
+        require(chain.chainStatus == ChainStatus.Verifying || chain.chainStatus == ChainStatus.Active, "not active");
         // verify next epoch block with new validator set
         (
         bytes32 blockHash,
         address[] memory newValidatorSet,
         uint64 blockNumber
-        ) = _verificationFunction(bas.verificationFunction).verifyBlockWithoutQuorum(chainId, rawEpochBlock, bas.epochLength);
-        uint64 newEpochNumber = blockNumber / bas.epochLength;
+        ) = _verificationFunction(chain).verifyBlockWithoutQuorum(chainId, rawEpochBlock, chain.epochLength);
+        uint64 newEpochNumber = blockNumber / chain.epochLength;
         // lets check signatures and make sure quorum is reached
-        if (bas.chainType == ChainType.BSC) {
+        if (chain.chainType == ChainType.Root) {
             bytes32 signingRoot = keccak256(abi.encode(blockHash, checkpointHash));
             for (uint256 i = 0; i < signatures.length; i++) {
-                require(_stakingContract.isValidatorActive(ECDSA.recover(signingRoot, signatures[i])), "bad validator");
+                require(_STAKING_CONTRACT.isValidatorActive(ECDSA.recover(signingRoot, signatures[i])), "bad validator");
             }
-            uint256 totalValidators = _stakingContract.getValidators().length;
+            uint256 totalValidators = _STAKING_CONTRACT.getValidators().length;
             require(signatures.length >= totalValidators, "quorum not reached");
-        } else if (bas.chainType == ChainType.BAS) {
+        } else if (chain.chainType == ChainType.Child) {
             address[] memory signers = new address[](signatures.length);
             bytes32 signingRoot = keccak256(abi.encode(blockHash, checkpointHash));
             for (uint256 i = 0; i < signatures.length; i++) {
@@ -345,11 +344,11 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
         {
             ValidatorHistory storage validatorHistory = _validatorHistories[chainId];
             _updateActiveValidatorSet(validatorHistory, newValidatorSet, newEpochNumber);
-            validatorHistory.epochCheckpoints[blockNumber / bas.epochLength] = checkpointHash;
+            validatorHistory.epochCheckpoints[blockNumber / chain.epochLength] = checkpointHash;
         }
-        // remember bas status
-        bas.chainStatus = ChainStatus.Active;
-        _registeredChains[chainId] = bas;
+        // remember chain status
+        chain.chainStatus = ChainStatus.Active;
+        _registeredChains[chainId] = chain;
     }
 
     function checkValidatorsAndQuorumReached(uint256 chainId, address[] memory validatorSet, uint64 epochNumber) public view returns (bool) {
@@ -382,21 +381,27 @@ contract RelayHub is Multicall, IRelayHub, IBridgeRegistry, IValidatorChecker {
         bytes calldata proofSiblings,
         bytes calldata proofPath
     ) external view virtual override returns (bool) {
-        // make sure bas chain is registered and active
-        BAS memory bas = _registeredChains[chainId];
-        require(bas.chainStatus == ChainStatus.Active, "not active");
+        // make sure chain chain is registered and active
+        RegisteredChain memory chain = _registeredChains[chainId];
+        require(chain.chainStatus == ChainStatus.Active, "not active");
         // verify block transition
-        IProofVerificationFunction pvf = _verificationFunction(bas.verificationFunction);
-        IProofVerificationFunction.BlockHeader memory blockHeader = pvf.verifyBlockAndReachedQuorum(chainId, blockProofs, bas.epochLength, this);
+        IProofVerificationFunction pvf = _verificationFunction(chain);
+        IProofVerificationFunction.BlockHeader memory blockHeader = pvf.verifyBlockAndReachedQuorum(chainId, blockProofs, chain.epochLength, this);
         // check receipt proof
         return pvf.checkReceiptProof(rawReceipt, blockHeader.receiptsRoot, proofSiblings, proofPath);
     }
 
-    function _verificationFunction(IProofVerificationFunction verificationFunction) internal view returns (IProofVerificationFunction) {
-        if (verificationFunction == DEFAULT_VERIFICATION_FUNCTION) {
-            return _defaultVerificationFunction;
-        } else {
-            return verificationFunction;
+    function _verificationFunction(RegisteredChain memory chain) internal view returns (IProofVerificationFunction) {
+        // if verification function is specified then just return it
+        if (chain.verificationFunction != DEFAULT_VERIFICATION_FUNCTION) {
+            return chain.verificationFunction;
         }
+        // return verification function depends on the chain type
+        if (chain.chainType == ChainType.Root) {
+            return _rootDefaultVerificationFunction;
+        } else if (chain.chainType == ChainType.Child) {
+            return _childDefaultVerificationFunction;
+        }
+        revert("verification function is not set");
     }
 }

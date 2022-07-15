@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, expectError} = require('./helper')
+const {newMockContract, expectError} = require('../helper')
 
 contract("DeployerProxy", async (accounts) => {
   const [owner] = accounts;

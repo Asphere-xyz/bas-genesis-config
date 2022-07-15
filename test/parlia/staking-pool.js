@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, waitForNextEpoch} = require("./helper");
+const {newMockContract, waitForNextEpoch} = require("../helper");
 
 contract("StakingPool", async (accounts) => {
   const [owner, staker1, staker2, validator1] = accounts

@@ -7,11 +7,27 @@ import "../verifiers/FakeBlockVerifier.sol";
 
 contract TestRelayHub is RelayHub {
 
-    constructor() RelayHub(new FakeBlockVerifier(), ZERO_STAKING_ADDRESS) {
+    constructor(ConstructorArguments memory constructorArgs) RelayHub(constructorArgs) {
     }
 
     function enableCrossChainBridge(uint256 chainId, address bridgeAddress) external {
         _registeredChains[chainId].bridgeAddress = bridgeAddress;
         _registeredChains[chainId].chainStatus = ChainStatus.Active;
+    }
+
+    modifier onlyFromCoinbase() override {
+        _;
+    }
+
+    modifier onlyFromSlashingIndicator() override {
+        _;
+    }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
     }
 }

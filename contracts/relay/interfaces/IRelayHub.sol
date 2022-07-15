@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 interface IRelayHub {
 
+    function getBridgeAddress(uint256 chainId) external view returns (address);
+
     function checkReceiptProof(
         uint256 chainId,
         bytes[] calldata blockProofs,

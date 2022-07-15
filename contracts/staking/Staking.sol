@@ -16,45 +16,9 @@ contract Staking is StakingStorageLayout, RetryableProxy {
     StakingValidatorRegistry private immutable _validatorRegistryLib;
     StakingRewardDistribution private immutable _rewardDistributionLib;
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) InjectorContextHolder(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
-        _validatorRegistryLib = new StakingValidatorRegistry(
-            stakingContract,
-            slashingIndicatorContract,
-            systemRewardContract,
-            stakingPoolContract,
-            governanceContract,
-            chainConfigContract,
-            runtimeUpgradeContract,
-            deployerProxyContract
-        );
-        _rewardDistributionLib = new StakingRewardDistribution(
-            stakingContract,
-            slashingIndicatorContract,
-            systemRewardContract,
-            stakingPoolContract,
-            governanceContract,
-            chainConfigContract,
-            runtimeUpgradeContract,
-            deployerProxyContract
-        );
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
+        _validatorRegistryLib = new StakingValidatorRegistry(constructorArgs);
+        _rewardDistributionLib = new StakingRewardDistribution(constructorArgs);
     }
 
     function initialize(

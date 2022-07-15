@@ -23,6 +23,7 @@ const {
 const {
   expectError
 } = require('./evm-utils');
+const {newMockContract} = require("../helper");
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -46,14 +47,14 @@ contract("CrossChainBridge", function (accounts) {
       tokenFactory = await SimpleTokenFactory.new();
     }
     // router
-    const bridgeRouter = await BridgeRouter.new(),
-      basRelayHub = await TestRelayHub.new();
+    const {relayHub} = await newMockContract(owner)
+    const bridgeRouter = await BridgeRouter.new();
     // bridge
     const crossChainBridge = await CrossChainBridge.new();
     const {name, symbol} = nameAndSymbolByNetwork('test');
-    await crossChainBridge.initialize(basRelayHub.address, basRelayHub.address, tokenFactory.address, bridgeRouter.address, symbol, name);
+    await crossChainBridge.initialize(relayHub.address, tokenFactory.address, bridgeRouter.address, symbol, name);
     // enable cross chain bridge
-    await basRelayHub.enableCrossChainBridge(chainId, crossChainBridge.address);
+    await relayHub.enableCrossChainBridge(chainId, crossChainBridge.address);
     return crossChainBridge;
   }
 

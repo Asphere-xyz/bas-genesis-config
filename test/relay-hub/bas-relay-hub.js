@@ -6,7 +6,8 @@
 /** @var assert */
 
 const ParliaBlockVerifier = artifacts.require("ParliaBlockVerifier");
-const RelayHub = artifacts.require("RelayHub");
+
+const {newMockContract} = require("../helper");
 
 const CHAPEL_PARAMS = require('../../params/chapel.json');
 const BSC_PARAMS = require('../../params/bsc.json');
@@ -18,7 +19,7 @@ const CHAPEL_REGISTRATION_PARAMS = [
   // bridge address (zero means disabled)
   '0x0000000000000000000000000000000000000000',
   // epoch length
-  200,
+  CHAPEL_PARAMS.epochLength,
 ]
 const BSC_REGISTRATION_PARAMS = [
   // chain id with raw genesis block
@@ -27,7 +28,7 @@ const BSC_REGISTRATION_PARAMS = [
   // bridge address (zero means disabled)
   '0x0000000000000000000000000000000000000000',
   // epoch length
-  200,
+  BSC_PARAMS.epochLength,
 ]
 
 const BSC_ZERO_EPOCH_VALIDATOR_SET = [
@@ -89,14 +90,15 @@ const CHAPEL_FIRST_EPOCH_TRANSITION = [
   '0xf90258a08c29ab97006891071ca89186c1eae66c140546c05b8497ea730f49235f1319caa01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d493479435552c16704d214347f29fa77f77da6d75d7c752a0be326f334378264bc98880f49863c9b4a0f1dbce836497a769e19fbfe291dee8a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000281cd8401c9c38080845f06d066b861d983010000846765746889676f312e31322e3137856c696e757800000000000060e087cb17250ac63b394598b35df759068ec0a8275c732ca671bbac11c8fac94007b477fa8dce269474cb522ed1099f3183dcc697dab9737a23bbad4766b5f900a00000000000000000000000000000000000000000000000000000000000000000880000000000000000',
 ];
 
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-
 contract("RelayHub", async (accounts) => {
-  const [] = accounts
+  const [owner] = accounts
   it("its possible to register certified BAS with pre-defined verification function", async () => {
-    const defaultVerificationFunction = await ParliaBlockVerifier.new(),
-      basRelayHub = await RelayHub.new(defaultVerificationFunction.address, ZERO_ADDRESS);
-    const res1 = await basRelayHub.registerCertifiedBAS(...BSC_REGISTRATION_PARAMS);
+    const defaultVerificationFunction = await ParliaBlockVerifier.new();
+    const {relayHub: basRelayHub} = await newMockContract(owner, {
+      rootDefaultVerificationFunction: defaultVerificationFunction.address,
+      childDefaultVerificationFunction: defaultVerificationFunction.address,
+    })
+    const res1 = await basRelayHub.registerCertifiedChain(...BSC_REGISTRATION_PARAMS);
     assert.equal(res1.logs[0].event, 'ChainRegistered');
     assert.equal(res1.logs[0].args.chainId, '56');
     const initValidatorSet = await basRelayHub.getActiveValidators(BSC_PARAMS.chainId);
@@ -106,10 +108,13 @@ contract("RelayHub", async (accounts) => {
     console.log(`BAS transition gas cost: ${res2.receipt.gasUsed}`)
   });
   it("check receipt proof", async () => {
-    const defaultVerificationFunction = await ParliaBlockVerifier.new(),
-      basRelayHub = await RelayHub.new(defaultVerificationFunction.address, ZERO_ADDRESS);
+    const defaultVerificationFunction = await ParliaBlockVerifier.new();
+    const {relayHub: basRelayHub} = await newMockContract(owner, {
+      rootDefaultVerificationFunction: defaultVerificationFunction.address,
+      childDefaultVerificationFunction: defaultVerificationFunction.address,
+    })
     // register BSC genesis block and activate it
-    await basRelayHub.registerCertifiedBAS(...BSC_REGISTRATION_PARAMS);
+    await basRelayHub.registerCertifiedChain(...BSC_REGISTRATION_PARAMS);
     await basRelayHub.updateValidatorSet(BSC_PARAMS.chainId, BSC_FIRST_EPOCH_TRANSITION);
     // make sure provided block is correct
     const blockOne = await defaultVerificationFunction.parseParliaBlockHeader('0xf9025aa00d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5ba01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347942a7cdd959bfe8d9487b2a43b33565295a698f7e2a01db428ea79cb2e8cc233ae7f4db7c3567adfcb699af668a9f583fdae98e95588a053a8743b873570daa630948b1858eaf5dc9bb0bca2093a197e507b2466c110a0a0fc7c0fda97e67ed8ae06e7a160218b3df995560dfcb209a3b0dddde969ec6b00b9010008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000020184025ff7a783300b37845f49ca59b861d883010002846765746888676f312e31332e34856c696e757800000000000000924cd67a1565fdd24dd59327a298f1d702d6b7a721440c063713cecb7229f4e162ae38be78f6f71aa5badeaaef35cea25061ee2100622a4a1631a07e862b517401a00000000000000000000000000000000000000000000000000000000000000000880000000000000000');
@@ -152,16 +157,22 @@ contract("RelayHub", async (accounts) => {
     assert.equal(result, true)
   })
   it("validator transition possible for chapel network", async () => {
-    const defaultVerificationFunction = await ParliaBlockVerifier.new(),
-      basRelayHub = await RelayHub.new(defaultVerificationFunction.address, ZERO_ADDRESS);
-    await basRelayHub.registerCertifiedBAS(...CHAPEL_REGISTRATION_PARAMS);
+    const defaultVerificationFunction = await ParliaBlockVerifier.new();
+    const {relayHub: basRelayHub} = await newMockContract(owner, {
+      rootDefaultVerificationFunction: defaultVerificationFunction.address,
+      childDefaultVerificationFunction: defaultVerificationFunction.address,
+    })
+    await basRelayHub.registerCertifiedChain(...CHAPEL_REGISTRATION_PARAMS);
     const initValidatorSet = await basRelayHub.getActiveValidators(CHAPEL_PARAMS.chainId);
     assert.deepEqual(Array.from(initValidatorSet).map(v => v.toLowerCase()).sort(), CHAPEL_ZERO_EPOCH_VALIDATOR_SET);
     await basRelayHub.updateValidatorSet(CHAPEL_PARAMS.chainId, CHAPEL_FIRST_EPOCH_TRANSITION);
   })
   it("chapel transition should work at block 808600", async () => {
-    const defaultVerificationFunction = await ParliaBlockVerifier.new(),
-      basRelayHub = await RelayHub.new(defaultVerificationFunction.address, ZERO_ADDRESS);
+    const defaultVerificationFunction = await ParliaBlockVerifier.new();
+    const {relayHub: basRelayHub} = await newMockContract(owner, {
+      rootDefaultVerificationFunction: defaultVerificationFunction.address,
+      childDefaultVerificationFunction: defaultVerificationFunction.address,
+    })
     // we stuck at block 808600
     await basRelayHub.registerUsingCheckpoint(
       '97',

@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, expectError, extractTxCost, waitForNextEpoch} = require("./helper");
+const {newMockContract, expectError, extractTxCost, waitForNextEpoch} = require("../helper");
 const BigNumber = require('bignumber.js');
 
 const claimDelegatorFeeAndCheck = async (parlia, validator, staker, shouldBeAmount) => {

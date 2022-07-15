@@ -10,25 +10,7 @@ contract Governance is InjectorContextHolder, GovernorCountingSimpleUpgradeable,
 
     uint256 internal _instantVotingPeriod;
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) InjectorContextHolder(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
     }
 
     function initialize(uint256 newVotingPeriod, string memory name) external initializer {

@@ -5,13 +5,11 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract} = require("./helper");
-
 const StorageLayoutChecker = artifacts.require("StorageLayoutChecker");
 
 contract("Injector", async (accounts) => {
   it("inherited from injector contracts always start with 100 slot", async () => {
-    const storageLayoutChecker = await StorageLayoutChecker.new(
+    const storageLayoutChecker = await StorageLayoutChecker.new([
       '0x0000000000000000000000000000000000000000',
       '0x0000000000000000000000000000000000000000',
       '0x0000000000000000000000000000000000000000',
@@ -20,7 +18,9 @@ contract("Injector", async (accounts) => {
       '0x0000000000000000000000000000000000000000',
       '0x0000000000000000000000000000000000000000',
       '0x0000000000000000000000000000000000000000',
-    );
+      '0x0000000000000000000000000000000000000000',
+      '0x0000000000000000000000000000000000000000',
+    ]);
     await storageLayoutChecker.makeSureInjectorLayoutIsNotCorrupted();
   });
 });

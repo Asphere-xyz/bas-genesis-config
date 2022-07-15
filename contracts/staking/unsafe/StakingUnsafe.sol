@@ -6,25 +6,7 @@ import "../libs/StakingRewardDistribution.sol";
 
 contract StakingValidatorRegistryUnsafe is StakingValidatorRegistry {
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) StakingValidatorRegistry(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) StakingValidatorRegistry(constructorArgs) {
     }
 
     modifier onlyFromCoinbase() override {
@@ -46,25 +28,7 @@ contract StakingValidatorRegistryUnsafe is StakingValidatorRegistry {
 
 contract StakingRewardDistributionUnsafe is StakingRewardDistribution {
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) StakingRewardDistribution(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
+    constructor(ConstructorArguments memory constructorArgs) StakingRewardDistribution(constructorArgs) {
     }
 
     modifier onlyFromCoinbase() override {
@@ -89,45 +53,9 @@ contract StakingUnsafe is StakingStorageLayout, RetryableProxy {
     StakingValidatorRegistryUnsafe private immutable _validatorRegistryLib;
     StakingRewardDistributionUnsafe private immutable _rewardDistributionLib;
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IStakingConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) InjectorContextHolder(
-        stakingContract,
-        slashingIndicatorContract,
-        systemRewardContract,
-        stakingPoolContract,
-        governanceContract,
-        chainConfigContract,
-        runtimeUpgradeContract,
-        deployerProxyContract
-    ) {
-        _validatorRegistryLib = new StakingValidatorRegistryUnsafe(
-            stakingContract,
-            slashingIndicatorContract,
-            systemRewardContract,
-            stakingPoolContract,
-            governanceContract,
-            chainConfigContract,
-            runtimeUpgradeContract,
-            deployerProxyContract
-        );
-        _rewardDistributionLib = new StakingRewardDistributionUnsafe(
-            stakingContract,
-            slashingIndicatorContract,
-            systemRewardContract,
-            stakingPoolContract,
-            governanceContract,
-            chainConfigContract,
-            runtimeUpgradeContract,
-            deployerProxyContract
-        );
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
+        _validatorRegistryLib = new StakingValidatorRegistryUnsafe(constructorArgs);
+        _rewardDistributionLib = new StakingRewardDistributionUnsafe(constructorArgs);
     }
 
     function initialize(

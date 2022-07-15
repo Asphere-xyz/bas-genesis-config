@@ -10,7 +10,6 @@ import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.
 
 import "./interfaces/ICrossChainBridge.sol";
 import "./interfaces/IERC20.sol";
-import "./interfaces/IBridgeRegistry.sol";
 import "./interfaces/IRelayHub.sol";
 
 import "../common/ReceiptParser.sol";
@@ -26,15 +25,13 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
     mapping(address => address) internal _peggedTokenOrigin;
     uint256 internal _globalNonce;
 
-    IRelayHub internal _basRelayHub;
-    IBridgeRegistry internal _bridgeRegistry;
+    IRelayHub internal _relayHub;
     Metadata internal _nativeTokenMetadata;
     SimpleTokenFactory internal _simpleTokenFactory;
     BridgeRouter internal _bridgeRouter;
 
     function initialize(
-        IBridgeRegistry bridgeRegistry,
-        IRelayHub basRelayHub,
+        IRelayHub relayHub,
         SimpleTokenFactory tokenFactory,
         BridgeRouter bridgeRouter,
         string memory nativeTokenSymbol,
@@ -43,19 +40,17 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
         __Pausable_init();
         __ReentrancyGuard_init();
         __Ownable_init();
-        __CrossChainBridge_init(bridgeRegistry, basRelayHub, tokenFactory, bridgeRouter, nativeTokenSymbol, nativeTokenName);
+        __CrossChainBridge_init(relayHub, tokenFactory, bridgeRouter, nativeTokenSymbol, nativeTokenName);
     }
 
     function __CrossChainBridge_init(
-        IBridgeRegistry bridgeRegistry,
-        IRelayHub basRelayHub,
+        IRelayHub relayHub,
         SimpleTokenFactory tokenFactory,
         BridgeRouter bridgeRouter,
         string memory nativeTokenSymbol,
         string memory nativeTokenName
     ) internal {
-        _bridgeRegistry = bridgeRegistry;
-        _basRelayHub = basRelayHub;
+        _relayHub = relayHub;
         _simpleTokenFactory = tokenFactory;
         _nativeTokenMetadata = Metadata(
             StringUtils.stringToBytes32(nativeTokenSymbol),
@@ -68,7 +63,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
     }
 
     modifier onlyRelayHub() virtual {
-        require(msg.sender == address(_basRelayHub));
+        require(msg.sender == address(_relayHub));
         _;
     }
 
@@ -77,7 +72,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
     }
 
     function getRelayHub() external view returns (IRelayHub) {
-        return _basRelayHub;
+        return _relayHub;
     }
 
     function setTokenFactory(SimpleTokenFactory simpleTokenFactory) public onlyOwner {
@@ -127,7 +122,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
         // sender is our from address because he is locking funds
         address fromAddress = address(msg.sender);
         // lets determine target bridge contract
-        address toBridge = _bridgeRegistry.getBridgeAddress(toChain);
+        address toBridge = _relayHub.getBridgeAddress(toChain);
         require(toBridge != address(0x00), "bad chain");
         // we need to calculate peg token contract address with meta data
         address toToken = _bridgeRouter.peggedTokenAddress(address(toBridge), _nativeTokenMetadata.origin);
@@ -187,7 +182,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
             require(balanceAfter >= balanceBefore + totalAmount, "incorrect behaviour");
         }
         // lets determine target bridge contract
-        address toBridge = _bridgeRegistry.getBridgeAddress(toChain);
+        address toBridge = _relayHub.getBridgeAddress(toChain);
         require(toBridge != address(0x00), "bad chain");
         // lets pack ERC20 token meta data and scale amount to 18 decimals
         uint256 scaledAmount = _amountErc20Token(fromToken, totalAmount);
@@ -214,7 +209,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
 
     function _peggedDestinationErc20Token(address fromToken, address origin, uint256 toChain, uint originChain) internal view returns (address) {
         // lets determine target bridge contract
-        address toBridge = _bridgeRegistry.getBridgeAddress(toChain);
+        address toBridge = _relayHub.getBridgeAddress(toChain);
         require(toBridge != address(0x00), "bad chain");
         // make sure token is supported
         require(_peggedTokenOrigin[fromToken] == origin, "non-pegged contract not supported");
@@ -243,7 +238,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
         (ReceiptParser.State memory state, ReceiptParser.PegInType pegInType) = ReceiptParser.parseTransactionReceipt(rawReceipt);
         require(state.chainId == block.chainid, "receipt points to another chain");
         // verify provided block proof
-        require(_basRelayHub.checkReceiptProof(state.originChain, blockProofs, rawReceipt, proofSiblings, proofPath), "bad proof");
+        require(_relayHub.checkReceiptProof(state.originChain, blockProofs, rawReceipt, proofSiblings, proofPath), "bad proof");
         // make sure origin contract is allowed
         _checkContractAllowed(state);
         // withdraw funds to recipient
@@ -251,7 +246,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
     }
 
     function _checkContractAllowed(ReceiptParser.State memory state) internal view virtual {
-        require(_bridgeRegistry.getBridgeAddress(state.originChain) == state.contractAddress, "event from not allowed contract");
+        require(_relayHub.getBridgeAddress(state.originChain) == state.contractAddress, "event from not allowed contract");
     }
 
     function _withdraw(ReceiptParser.State memory state, ReceiptParser.PegInType pegInType, bytes32 proofHash) internal {
@@ -333,7 +328,7 @@ contract CrossChainBridge is PausableUpgradeable, ReentrancyGuardUpgradeable, Ow
 
     function factoryPeggedToken(uint256 fromChain, Metadata calldata metaData) external onlyOwner override {
         // make sure this chain is supported
-        require(_bridgeRegistry.getBridgeAddress(fromChain) != address(0x00), "bad contract");
+        require(_relayHub.getBridgeAddress(fromChain) != address(0x00), "bad contract");
         // calc target token
         address toToken = _bridgeRouter.peggedTokenAddress(address(this), metaData.origin);
         require(_peggedTokenOrigin[toToken] == address(0x00), "already exists");

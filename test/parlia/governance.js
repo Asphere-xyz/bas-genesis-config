@@ -5,7 +5,7 @@
 /** @function before */
 /** @var assert */
 
-const {newMockContract, waitForNextEpoch, expectError} = require('./helper')
+const {newMockContract, waitForNextEpoch, expectError} = require('../helper')
 
 contract("Governance", async (accounts) => {
   const [owner, validator1, validator2, owner1, owner2] = accounts;
