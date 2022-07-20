@@ -31,6 +31,8 @@ const DEFAULT_MOCK_PARAMS = {
   finalityRewardRatio: '1000', // 10%
   rootDefaultVerificationFunction: '0x0000000000000000000000000000000000000000',
   childDefaultVerificationFunction: '0x0000000000000000000000000000000000000000',
+  nativeTokenSymbol: 'BAS',
+  nativeTokenName: 'BAS',
 };
 
 const DEFAULT_CONTRACT_TYPES = {
@@ -92,6 +94,8 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     finalityRewardRatio,
     rootDefaultVerificationFunction,
     childDefaultVerificationFunction,
+    nativeTokenSymbol,
+    nativeTokenName,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
   // convert single param to the object
   if (typeof systemTreasury === 'string') {
@@ -129,7 +133,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   const runtimeUpgrade = await RuntimeUpgrade.new(systemAddresses, {from: owner});
   const deployerProxy = await newRuntimeProxy(DeployerProxy, [genesisDeployers]);
   const relayHub = await newRuntimeProxy(RelayHub, [rootDefaultVerificationFunction, childDefaultVerificationFunction]);
-  // const crossChainBridge = await newRuntimeProxy(CrossChainBridge, []);
+  const crossChainBridge = await newRuntimeProxy(CrossChainBridge, [relayHub.address, nativeTokenSymbol, nativeTokenName]);
   // make sure runtime upgrade address is correct
   if (runtimeUpgrade.address.toLowerCase() !== runtimeUpgradeAddress.toLowerCase()) {
     console.log(`Required system address order: ${JSON.stringify(systemAddresses, null, 2)}`)
@@ -143,7 +147,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
       runtimeUpgrade.address,
       deployerProxy.address,
       relayHub.address,
-      // crossChainBridge.address,
+      crossChainBridge.address,
     ], null, 2)}`);
     throw new Error(`Runtime upgrade position mismatched, its not allowed (${runtimeUpgrade.address} != ${runtimeUpgradeAddress})`)
   }
@@ -157,6 +161,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   await (await InjectorContextHolder.at(stakingConfig.address)).init({from: owner});
   await (await InjectorContextHolder.at(deployerProxy.address)).init({from: owner});
   await (await InjectorContextHolder.at(relayHub.address)).init({from: owner});
+  await (await InjectorContextHolder.at(crossChainBridge.address)).init({from: owner});
   // patch staking interface to be compatible with unit tests
   const stakingConfig2 = await StakingConfig.at(stakingConfig.address);
   IStaking.prototype.getEpochBlockInterval = async () => {
@@ -176,7 +181,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     deployer: await DeployerProxy.at(deployerProxy.address),
     deployerProxy: await DeployerProxy.at(deployerProxy.address),
     relayHub: await RelayHub.at(relayHub.address),
-    // cross chain
+    crossChainBridge: await CrossChainBridge.at(crossChainBridge.address),
   }
 }
 

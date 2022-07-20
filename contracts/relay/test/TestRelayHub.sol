@@ -15,6 +15,16 @@ contract TestRelayHub is RelayHub {
         _registeredChains[chainId].chainStatus = ChainStatus.Active;
     }
 
+    function checkReceiptProof(
+        uint256 chainId,
+        bytes[] calldata blockProofs,
+        bytes calldata rawReceipt,
+        bytes calldata proofSiblings,
+        bytes calldata proofPath
+    ) external view override returns (bool) {
+        return true;
+    }
+
     modifier onlyFromCoinbase() override {
         _;
     }

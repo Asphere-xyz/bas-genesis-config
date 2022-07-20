@@ -5,8 +5,8 @@ import "./RLP.sol";
 
 library ReceiptParser {
 
-    bytes32 constant TOPIC_PEG_IN_LOCKED = keccak256("DepositLocked(uint256,address,address,address,address,uint256,uint256,(bytes32,bytes32,uint256,address))");
-    bytes32 constant TOPIC_PEG_IN_BURNED = keccak256("DepositBurned(uint256,address,address,address,address,uint256,uint256,(bytes32,bytes32,uint256,address))");
+    bytes32 constant TOPIC_PEG_IN_LOCKED = keccak256("DepositLocked(uint256,uint256,address,address,address,address,uint256,uint256,(bytes32,bytes32,address))");
+    bytes32 constant TOPIC_PEG_IN_BURNED = keccak256("DepositBurned(uint256,uint256,address,address,address,address,uint256,uint256,(bytes32,bytes32,address))");
 
     enum PegInType {
         None,
@@ -15,10 +15,11 @@ library ReceiptParser {
     }
 
     struct State {
-        // distance between these fields and metadata is 0x120 bytes
+        // distance between these fields and metadata is 192 bytes
         bytes32 receiptHash;
         address contractAddress;
-        uint256 chainId;
+        uint256 fromChain;
+        uint256 toChain;
         address fromAddress;
         address toAddress;
         // these fields must have the same order as deposit event
@@ -29,7 +30,6 @@ library ReceiptParser {
         // metadata fields (we can't use Metadata struct here because of Solidity struct memory layout)
         bytes32 originSymbol;
         bytes32 originName;
-        uint256 originChain;
         address originToken;
     }
 
@@ -65,10 +65,7 @@ library ReceiptParser {
         return (state, pegInType);
     }
 
-    function _decodeReceiptLogs(
-        State memory state,
-        uint256 log
-    ) internal view returns (PegInType pegInType) {
+    function _decodeReceiptLogs(State memory state, uint256 log) internal view returns (PegInType pegInType) {
         uint256 logIter = RLP.beginIteration(log);
         address contractAddress;
         {
@@ -121,24 +118,28 @@ library ReceiptParser {
         }
         {
             // read chain id separately and verify that contract that emitted event is relevant
-            uint256 chainId;
+            uint256 fromChain;
+            uint256 toChain;
             assembly {
-                chainId := calldataload(ptr)
+                fromChain := calldataload(add(ptr, 0x00))
+                toChain := calldataload(add(ptr, 0x20))
             }
-            if (chainId != block.chainid) {
+            state.fromChain = fromChain;
+            state.toChain = toChain;
+            // if target chain is not correct then just skip this log
+            if (toChain != block.chainid) {
                 return PegInType.None;
             }
-            // All checks are passed after this point, no errors allowed and we can modify state
-            state.chainId = chainId;
-            ptr += 0x20;
-            len -= 0x20;
+            // all checks are passed after this point, no errors allowed and we can modify state
+            ptr += 0x40;
+            len -= 0x40;
         }
 
         {
             uint256 structOffset;
+            // skip 6 fields (6*32=192): receiptHash, contractAddress, fromChain, toChain, fromAddress, toAddress
             assembly {
-            // skip 5 fields: receiptHash, contractAddress, chainId, fromAddress, toAddress
-                structOffset := add(state, 0xa0)
+                structOffset := add(state, 192)
                 calldatacopy(structOffset, ptr, len)
             }
         }
