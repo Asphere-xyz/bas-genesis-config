@@ -133,7 +133,7 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   const runtimeUpgrade = await RuntimeUpgrade.new(systemAddresses, {from: owner});
   const deployerProxy = await newRuntimeProxy(DeployerProxy, [genesisDeployers]);
   const relayHub = await newRuntimeProxy(RelayHub, [rootDefaultVerificationFunction, childDefaultVerificationFunction]);
-  const crossChainBridge = await newRuntimeProxy(CrossChainBridge, [relayHub.address, nativeTokenSymbol, nativeTokenName]);
+  const crossChainBridge = await newRuntimeProxy(CrossChainBridge, [nativeTokenSymbol, nativeTokenName]);
   // make sure runtime upgrade address is correct
   if (runtimeUpgrade.address.toLowerCase() !== runtimeUpgradeAddress.toLowerCase()) {
     console.log(`Required system address order: ${JSON.stringify(systemAddresses, null, 2)}`)

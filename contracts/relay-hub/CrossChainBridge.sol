@@ -23,9 +23,7 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
     mapping(bytes32 => bool) internal _usedProofs;
     mapping(address => address) internal _peggedTokenOrigin;
     uint256 internal _globalNonce;
-
-    IRelayHub internal _relayHub;
-    MetaData internal _metaData;
+    MetaData internal _nativeMetaData;
 
     constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
         (_erc20TokenHandler) = _factoryTokenHandlers();
@@ -35,22 +33,13 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
         return (new ERC20TokenHandler());
     }
 
-    function initialize(
-        IRelayHub relayHub,
-        string memory nativeTokenSymbol,
-        string memory nativeTokenName
-    ) external initializer {
+    function initialize(string memory nativeTokenSymbol, string memory nativeTokenName) external initializer {
         __ReentrancyGuard_init();
-        __CrossChainBridge_init(relayHub, nativeTokenSymbol, nativeTokenName);
+        __CrossChainBridge_init(nativeTokenSymbol, nativeTokenName);
     }
 
-    function __CrossChainBridge_init(
-        IRelayHub relayHub,
-        string memory nativeTokenSymbol,
-        string memory nativeTokenName
-    ) internal {
-        _relayHub = relayHub;
-        _metaData = MetaData(
+    function __CrossChainBridge_init(string memory nativeTokenSymbol, string memory nativeTokenName) internal {
+        _nativeMetaData = MetaData(
             StringUtils.stringToBytes32(nativeTokenSymbol),
             StringUtils.stringToBytes32(nativeTokenName),
             _generateNativeTokenAddress(nativeTokenSymbol)
@@ -62,12 +51,12 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
         return address(bytes20(keccak256(abi.encodePacked("CrossChainBridge:", tokenSymbol))));
     }
 
-    function getNativeMetaData() public view returns (MetaData memory) {
-        return _metaData;
+    function getNativeMetaData() external view returns (MetaData memory) {
+        return _nativeMetaData;
     }
 
     function getOrigin(address token) internal view returns (uint256, address) {
-        if (token == _metaData.origin) {
+        if (token == _nativeMetaData.origin) {
             return (0, address(0x0));
         }
         try IPegToken(token).getOrigin() returns (uint256 chain, address origin) {
@@ -76,15 +65,15 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
         return (0, address(0x0));
     }
 
-    function isPeggedToken(address toToken) public view override returns (bool) {
+    function isPeggedToken(address toToken) external view override returns (bool) {
         return _peggedTokenOrigin[toToken] != address(0x00);
     }
 
-    function deposit(uint256 toChain, address toAddress) public payable nonReentrant override {
+    function deposit(uint256 toChain, address toAddress) external payable nonReentrant override {
         _depositNative(toChain, toAddress, msg.value);
     }
 
-    function depositERC20(address fromToken, uint256 toChain, address toAddress, uint256 amount) public nonReentrant override {
+    function depositERC20(address fromToken, uint256 toChain, address toAddress, uint256 amount) external nonReentrant override {
         (uint256 chain, address origin) = getOrigin(fromToken);
         if (chain != 0) {
             // if we have pegged contract then its pegged token
@@ -99,21 +88,21 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
         // sender is our from address because he is locking funds
         address fromAddress = address(msg.sender);
         // lets determine target bridge contract
-        address toBridge = _relayHub.getBridgeAddress(toChain);
+        address toBridge = _RELAY_HUB_CONTRACT.getBridgeAddress(toChain);
         require(toBridge != address(0x00), "bad chain");
         // we need to calculate peg token contract address with meta data
-        address toToken = _erc20TokenHandler.calcPegTokenAddress(address(toBridge), _metaData.origin);
+        address toToken = _erc20TokenHandler.calcPegTokenAddress(address(toBridge), _nativeMetaData.origin);
         // emit event with all these params
         emit DepositLocked(
             block.chainid,
             toChain,
             fromAddress, // who send these funds
             toAddress, // who can claim these funds in "toChain" network
-            _metaData.origin, // this is our current native token (e.g. ETH, MATIC, BNB, etc)
+            _nativeMetaData.origin, // this is our current native token (e.g. ETH, MATIC, BNB, etc)
             toToken, // this is an address of our target pegged token
             totalAmount, // how much funds was locked in this contract
             _globalNonce,
-            _metaData // meta information about
+            _nativeMetaData // meta information about
         );
         _globalNonce++;
     }
@@ -160,7 +149,7 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
             require(balanceAfter >= balanceBefore + totalAmount, "incorrect behaviour");
         }
         // lets determine target bridge contract
-        address toBridge = _relayHub.getBridgeAddress(toChain);
+        address toBridge = _RELAY_HUB_CONTRACT.getBridgeAddress(toChain);
         require(toBridge != address(0x00), "bad chain");
         // lets pack ERC20 token meta data and scale amount to 18 decimals
         uint256 scaledAmount = _amountErc20Token(fromToken, totalAmount);
@@ -187,7 +176,7 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
 
     function _peggedDestinationErc20Token(address fromToken, address origin, uint256 toChain, uint originChain) internal view returns (address) {
         // lets determine target bridge contract
-        address toBridge = _relayHub.getBridgeAddress(toChain);
+        address toBridge = _RELAY_HUB_CONTRACT.getBridgeAddress(toChain);
         require(toBridge != address(0x00), "bad chain");
         // make sure token is supported
         require(_peggedTokenOrigin[fromToken] == origin, "non-pegged contract not supported");
@@ -214,7 +203,7 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
         (ReceiptParser.State memory state, ReceiptParser.PegInType pegInType) = ReceiptParser.parseTransactionReceipt(rawReceipt);
         require(state.toChain == block.chainid, "receipt points to another chain");
         // verify provided block proof
-        require(_relayHub.checkReceiptProof(state.fromChain, blockProofs, rawReceipt, proofSiblings, proofPath), "bad proof");
+        require(_RELAY_HUB_CONTRACT.checkReceiptProof(state.fromChain, blockProofs, rawReceipt, proofSiblings, proofPath), "bad proof");
         // make sure origin contract is allowed
         _checkContractAllowed(state);
         // withdraw funds to recipient
@@ -222,14 +211,14 @@ contract CrossChainBridge is InjectorContextHolder, ReentrancyGuardUpgradeable, 
     }
 
     function _checkContractAllowed(ReceiptParser.State memory state) internal view virtual {
-        require(_relayHub.getBridgeAddress(state.fromChain) == state.contractAddress, "event from not allowed contract");
+        require(_RELAY_HUB_CONTRACT.getBridgeAddress(state.fromChain) == state.contractAddress, "event from not allowed contract");
     }
 
     function _withdraw(ReceiptParser.State memory state, ReceiptParser.PegInType pegInType, bytes32 proofHash) internal {
         // make sure these proofs wasn't used before
         require(!_usedProofs[proofHash], "proof already used");
         _usedProofs[proofHash] = true;
-        if (state.toToken == _metaData.origin) {
+        if (state.toToken == _nativeMetaData.origin) {
             _withdrawNative(state);
         } else if (pegInType == ReceiptParser.PegInType.Lock) {
             _withdrawPegged(state, state.fromToken);

@@ -3,7 +3,7 @@ pragma solidity ^0.8.6;
 
 import {IBridgeHandler, ICrossChainBridge} from "../interfaces/IBridgeHandler.sol";
 
-import {PegTokenBeaconProxy, IBeacon} from "./PegTokenBeaconProxy.sol";
+import {PegTokenBeaconProxy, IBeacon} from "../PegTokenBeaconProxy.sol";
 import {ERC20PegToken} from "./ERC20PegToken.sol";
 
 contract ERC20TokenHandler is IBridgeHandler, IBeacon {
@@ -20,10 +20,6 @@ contract ERC20TokenHandler is IBridgeHandler, IBeacon {
 
     function _factoryTokenTemplate() internal virtual returns (address) {
         return address(new ERC20PegToken());
-    }
-
-    function getBeaconProxyBytecode() external view returns (bytes memory) {
-        return type(PegTokenBeaconProxy).creationCode;
     }
 
     function calcPegTokenAddress(address bridgeAddress, address fromToken) external view override returns (address) {

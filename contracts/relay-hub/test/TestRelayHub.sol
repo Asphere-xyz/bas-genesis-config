@@ -16,12 +16,12 @@ contract TestRelayHub is RelayHub {
     }
 
     function checkReceiptProof(
-        uint256 chainId,
-        bytes[] calldata blockProofs,
-        bytes calldata rawReceipt,
-        bytes calldata proofSiblings,
-        bytes calldata proofPath
-    ) external view override returns (bool) {
+        uint256 /*chainId*/,
+        bytes[] calldata /*blockProofs*/,
+        bytes calldata /*rawReceipt*/,
+        bytes calldata /*proofSiblings*/,
+        bytes calldata /*proofPath*/
+    ) external pure override returns (bool) {
         return true;
     }
 

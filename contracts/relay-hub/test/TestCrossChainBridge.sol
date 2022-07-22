@@ -24,7 +24,7 @@ contract TestCrossChainBridge is CrossChainBridge {
 
     function factoryPeggedToken(uint256 fromChain, MetaData calldata metaData) external {
         // make sure this chain is supported
-        require(_relayHub.getBridgeAddress(fromChain) != address(0x00), "bad contract");
+        require(_RELAY_HUB_CONTRACT.getBridgeAddress(fromChain) != address(0x00), "bad contract");
         // calc target token
         address toToken = _erc20TokenHandler.calcPegTokenAddress(address(this), metaData.origin);
         require(_peggedTokenOrigin[toToken] == address(0x00), "already exists");

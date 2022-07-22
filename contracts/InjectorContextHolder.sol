@@ -16,8 +16,8 @@ import "./acl/interfaces/IDeployerProxy.sol";
 import "./parlia/interfaces/IGovernance.sol";
 import "./parlia/interfaces/ISlashingIndicator.sol";
 import "./parlia/interfaces/ISystemReward.sol";
-import "./relay/interfaces/IRelayHub.sol";
-import "./relay/interfaces/ICrossChainBridge.sol";
+import "./relay-hub/interfaces/IRelayHub.sol";
+import "./relay-hub/interfaces/ICrossChainBridge.sol";
 
 abstract contract InjectorContextHolder is Initializable, Multicall {
 

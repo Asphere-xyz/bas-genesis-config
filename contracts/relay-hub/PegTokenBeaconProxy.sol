@@ -15,12 +15,10 @@ contract PegTokenBeaconProxy is Proxy, ERC1967Upgrade {
         assert(_BEACON_SLOT == bytes32(uint256(keccak256("eip1967.proxy.beacon")) - 1));
     }
 
-    modifier onlyOnce() {
-        require(_getBeacon() == ZERO_ADDRESS);
-        _;
-    }
-
-    function initialize(address beacon) external onlyOnce {
+    function initialize(address beacon) external {
+        // make sure beacon is not set (it can't be changed in the future)
+        require(_getBeacon() == ZERO_ADDRESS, "only once");
+        // set new beacon
         _upgradeBeaconToAndCall(beacon, bytes(""), false);
     }
 
