@@ -32,6 +32,10 @@ contract TestCrossChainBridge is CrossChainBridge {
         _factoryPeggedToken(toToken, metaData, fromChain);
     }
 
+    function getRelayHub() external view returns (IRelayHub) {
+        return _RELAY_HUB_CONTRACT;
+    }
+
     modifier onlyFromCoinbase() override {
         _;
     }
