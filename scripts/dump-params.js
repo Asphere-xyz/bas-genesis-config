@@ -38,6 +38,7 @@ const DEFAULT_CHAIN_PARAMS = [
   ['bas-devnet-2', 'https://rpc.dev-02.bas.ankr.com/'],
   ['bsc', 'https://rpc.ankr.com/bsc'],
   ['chapel', 'https://data-seed-prebsc-1-s1.binance.org:8545/'],
+  ['metaapes', 'https://bas.metaapesgame.com/bas_mainnet_full_rpc'],
 ];
 
 const main = async () => {
@@ -54,7 +55,11 @@ const main = async () => {
     }
   }
   for (const [chainName, rpcUrl] of DEFAULT_CHAIN_PARAMS) {
-    await createChainParams(rpcUrl, `${parentPath}/params/${chainName}.json`);
+    try {
+      await createChainParams(rpcUrl, `${parentPath}/params/${chainName}.json`);
+    } catch (e) {
+      console.error(`Failed to dump params for network (${chainName}): ${e}`)
+    }
   }
 }
 

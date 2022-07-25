@@ -11,11 +11,11 @@ import "./common/Multicall.sol";
 import "./staking/interfaces/IStakingConfig.sol";
 import "./staking/interfaces/IStaking.sol";
 import "./staking/interfaces/IStakingPool.sol";
-import "./runtime/interfaces/IRuntimeUpgrade.sol";
-import "./acl/interfaces/IDeployerProxy.sol";
-import "./parlia/interfaces/IGovernance.sol";
-import "./parlia/interfaces/ISlashingIndicator.sol";
-import "./parlia/interfaces/ISystemReward.sol";
+import "./blockchain/interfaces/IRuntimeUpgrade.sol";
+import "./blockchain/interfaces/IDeployerProxy.sol";
+import "./blockchain/interfaces/IGovernance.sol";
+import "./blockchain/interfaces/ISlashingIndicator.sol";
+import "./blockchain/interfaces/ISystemReward.sol";
 import "./relay-hub/interfaces/IRelayHub.sol";
 import "./relay-hub/interfaces/ICrossChainBridge.sol";
 
