@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "./Injector.sol";
+import "./InjectorContextHolder.sol";
 
-contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
+contract DeployerProxy is InjectorContextHolder, IDeployerProxy {
 
     event DeployerAdded(address indexed account);
     event DeployerRemoved(address indexed account);
@@ -35,10 +35,28 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
     mapping(address => Deployer) private _contractDeployers;
     mapping(address => SmartContract) private _smartContracts;
 
-    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) InjectorContextHolder(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function ctor(address[] memory deployers) external whenNotInitialized {
+    function initialize(address[] memory deployers) external initializer {
         for (uint256 i = 0; i < deployers.length; i++) {
             _addDeployer(deployers[i]);
         }
@@ -57,7 +75,7 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
     }
 
     function _addDeployer(address account) internal {
-        require(!_contractDeployers[account].exists, "Deployer: deployer already exist");
+        require(!_contractDeployers[account].exists, "deployer already exist");
         _contractDeployers[account] = Deployer({
         exists : true,
         account : account,
@@ -71,7 +89,7 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
     }
 
     function _removeDeployer(address account) internal {
-        require(_contractDeployers[account].exists, "Deployer: deployer doesn't exist");
+        require(_contractDeployers[account].exists, "deployer doesn't exist");
         delete _contractDeployers[account];
         emit DeployerRemoved(account);
     }
@@ -81,15 +99,15 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
     }
 
     function _banDeployer(address account) internal {
-        require(_contractDeployers[account].exists, "Deployer: deployer doesn't exist");
-        require(!_contractDeployers[account].banned, "Deployer: deployer already banned");
+        require(_contractDeployers[account].exists, "deployer doesn't exist");
+        require(!_contractDeployers[account].banned, "deployer already banned");
         _contractDeployers[account].banned = true;
         emit DeployerBanned(account);
     }
 
     function _unbanDeployer(address account) internal {
-        require(_contractDeployers[account].exists, "Deployer: deployer doesn't exist");
-        require(_contractDeployers[account].banned, "Deployer: deployer is not banned");
+        require(_contractDeployers[account].exists, "deployer doesn't exist");
+        require(_contractDeployers[account].banned, "deployer is not banned");
         _contractDeployers[account].banned = false;
         emit DeployerUnbanned(account);
     }
@@ -107,10 +125,10 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
 
     function _registerDeployedContract(address deployer, address impl) internal {
         // make sure this call is allowed
-        require(isDeployer(deployer), "Deployer: deployer is not allowed");
+        require(isDeployer(deployer), "deployer is not allowed");
         // remember who deployed contract
         SmartContract memory dc = _smartContracts[impl];
-        require(dc.impl == address(0x00), "Deployer: contract is deployed already");
+        require(dc.impl == address(0x00), "contract is deployed already");
         dc.state = ContractState.Enabled;
         dc.impl = impl;
         dc.deployer = deployer;
@@ -130,7 +148,7 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
     function _checkContractActive(address impl) internal view {
         // check that contract is not disabled
         SmartContract memory dc = _smartContracts[impl];
-        require(dc.state != ContractState.Disabled, "Deployer: contract is not enabled");
+        require(dc.state != ContractState.Disabled, "contract is not enabled");
     }
 
     function disableContract(address impl) public onlyFromGovernance virtual override {
@@ -143,7 +161,7 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
 
     function _disableContract(address contractAddress) internal {
         SmartContract memory dc = _smartContracts[contractAddress];
-        require(dc.state == ContractState.Enabled, "Deployer: contract already disabled");
+        require(dc.state == ContractState.Enabled, "contract already disabled");
         dc.state = ContractState.Disabled;
         _smartContracts[contractAddress] = dc;
         //emit event
@@ -152,7 +170,7 @@ contract DeployerProxy is IDeployerProxy, InjectorContextHolder {
 
     function _enableContract(address contractAddress) internal {
         SmartContract memory dc = _smartContracts[contractAddress];
-        require(dc.state == ContractState.Disabled, "Deployer: contract already enabled");
+        require(dc.state == ContractState.Disabled, "contract already enabled");
         dc.state = ContractState.Enabled;
         _smartContracts[contractAddress] = dc;
         //emit event

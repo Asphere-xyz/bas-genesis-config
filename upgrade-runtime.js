@@ -1,9 +1,10 @@
 const Web3 = require('web3'),
   fs = require('fs');
+const AbiCoder = require("web3-eth-abi");
 
-const ABI_STAKING = require('./build/abi/Staking.json');
-const ABI_GOVERNANCE = require('./build/abi/Governance.json');
-const ABI_RUNTIME_UPGRADE = require('./build/abi/RuntimeUpgrade.json');
+const ABI_STAKING = require('./build/contracts/Staking.json').abi;
+const ABI_GOVERNANCE = require('./build/contracts/Governance.json').abi;
+const ABI_RUNTIME_UPGRADE = require('./build/contracts/RuntimeUpgrade.json').abi;
 
 const askFor = async (question) => {
   return new Promise(resolve => {
@@ -35,11 +36,13 @@ const ALL_ADDRESSES = [
   STAKING_POOL_ADDRESS,
   GOVERNANCE_ADDRESS,
   CHAIN_CONFIG_ADDRESS,
-  // RUNTIME_UPGRADE_ADDRESS (runtime upgrade can't be upgraded)
+  RUNTIME_UPGRADE_ADDRESS,
   DEPLOYER_PROXY_ADDRESS,
 ];
 
-const readByteCodeForAddress = address => {
+const UPGRADABLE_ADDRESSES = ALL_ADDRESSES.filter(c => c !== RUNTIME_UPGRADE_ADDRESS);
+
+const readByteCodeForAddress = (address) => {
   const artifactPaths = {
     [STAKING_ADDRESS]: './build/contracts/Staking.json',
     [SLASHING_INDICATOR_ADDRESS]: './build/contracts/SlashingIndicator.json',
@@ -52,18 +55,29 @@ const readByteCodeForAddress = address => {
   }
   const filePath = artifactPaths[address]
   if (!filePath) throw new Error(`There is no artifact for the address: ${address}`)
-  const {deployedBytecode} = JSON.parse(fs.readFileSync(filePath, 'utf8'))
-  return deployedBytecode
+  const {bytecode} = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  return bytecode
 }
 
 const sleepFor = async ms => {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+const injectorBytecode = (bytecode) => {
+  const injectorArgs = AbiCoder.encodeParameters(['address', 'address', 'address', 'address', 'address', 'address', 'address', 'address',], ALL_ADDRESSES)
+  return bytecode + injectorArgs.substr(2)
+}
+
 const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded', 'Queued', 'Expired', 'Executed'];
 
 (async () => {
-  const web3 = new Web3('https://rpc.dev-02.bas.ankr.com/');
+  const rpcUrl = process.argv[2];
+  if (!rpcUrl) {
+    console.error(`Specify RPC url`)
+    process.exit(1);
+  }
+  const isAuto = process.argv.some(val => val === '--auto')
+  const web3 = new Web3(rpcUrl);
   const signTx = async (account, {to, data, value}) => {
     const nonce = await web3.eth.getTransactionCount(account.address),
       chainId = await web3.eth.getChainId()
@@ -127,16 +141,38 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
   if (!someValidator) {
     throw new Error(`There is no validators in the network, its not possible`)
   }
-  const upgradeSystemContractByteCode = async (contractAddress) => {
-    const byteCode = readByteCodeForAddress(contractAddress),
-      existingByteCode = await web3.eth.getCode(contractAddress)
-    if (byteCode === existingByteCode) {
-      console.log(` ~ bytecode is the same, skipping ~ `);
-      return;
+  const upgradeSystemContractByteCode = async (contractAddress, defaultByteCode = []) => {
+    if (!Array.isArray(contractAddress)) {
+      contractAddress = [contractAddress]
     }
-    const desc = `Runtime upgrade for the smart contract (${new Date().getTime()})`;
-    const upgradeCall = runtimeUpgrade.methods.upgradeSystemSmartContract(contractAddress, byteCode, '0x').encodeABI(),
-      governanceCall = governance.methods.proposeWithCustomVotingPeriod([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], desc, '20').encodeABI()
+    if (!Array.isArray(defaultByteCode)) {
+      defaultByteCode = [defaultByteCode]
+    }
+    const [addresses, values, calls] = contractAddress.reduce(([addresses, values, calls], address, i) => {
+      const byteCode = defaultByteCode[i] || readByteCodeForAddress(address),
+        call = runtimeUpgrade.methods.upgradeSystemSmartContract(address, injectorBytecode(byteCode), '0x').encodeABI()
+      addresses.push(RUNTIME_UPGRADE_ADDRESS);
+      values.push('0');
+      calls.push(call);
+      return [addresses, values, calls]
+    }, [[], [], []]);
+    let governanceCall;
+    const desc = `Runtime upgrade for (${contractAddress.join(',')}, at ${new Date().toLocaleString()})`;
+    for (const i in calls) {
+      console.log(`Testing call... from=${GOVERNANCE_ADDRESS} to=${addresses[i]}`);
+      try {
+        await web3.eth.call({
+          value: values[i],
+          from: GOVERNANCE_ADDRESS,
+          to: addresses[i],
+          data: calls[i],
+        });
+      } catch (e) {
+        const yesNo = await askFor(`It seems runtime upgrade might fail with error (${e.message}), would you like to continue? (yes/no) `);
+        if (yesNo !== 'yes') return;
+      }
+    }
+    governanceCall = governance.methods.proposeWithCustomVotingPeriod(addresses, values, calls, desc, '20').encodeABI()
     const {rawTransaction, transactionHash} = await signTx(someValidator, {
       to: GOVERNANCE_ADDRESS,
       data: governanceCall,
@@ -182,7 +218,17 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
           break;
         }
         case 'Succeeded': {
-          const executeCall = governance.methods.execute([RUNTIME_UPGRADE_ADDRESS], ['0x00'], [upgradeCall], web3.utils.keccak256(desc)).encodeABI()
+          const executeCall = governance.methods.execute(addresses, values, calls, web3.utils.keccak256(desc)).encodeABI()
+          try {
+            const result = await web3.eth.call({
+              from: someValidator.address,
+              to: GOVERNANCE_ADDRESS,
+              data: executeCall
+            })
+            console.log(`Execute result: ${result}`)
+          } catch (e) {
+            console.error(`Failed to calc result: ${e}`)
+          }
           const {rawTransaction, transactionHash} = await signTx(someValidator, {
             to: GOVERNANCE_ADDRESS,
             data: executeCall,
@@ -203,17 +249,45 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
       await sleepFor(12_000)
     }
   }
-  // create new runtime upgrade proposal
-  const contractAddress = await askFor('What address you\'d like to upgrade? (use "auto" for auto mode) ')
-  if (contractAddress === 'auto') {
-    for (const address of ALL_ADDRESSES) {
-      console.log(`Upgrading smart contract: ${address}`);
-      console.log(`---------------------------`);
-      await upgradeSystemContractByteCode(address)
-      console.log(`---------------------------`);
-      console.log()
+  // upgrade EVM hooks to the EIP-1967
+  const isEIP1967 = async () => {
+    try {
+      return await runtimeUpgrade.methods.isEIP1967().call();
+    } catch (e) {
+      console.error(e)
     }
-  } else if (!ALL_ADDRESSES.includes(contractAddress)) {
+    return false;
+  }
+  const isNewRuntimeUpgrade = await isEIP1967();
+  console.log(`isEIP1967: ${isNewRuntimeUpgrade}`);
+  if (!isNewRuntimeUpgrade) {
+    const existingRuntimeUpgradeCode = await web3.eth.getCode(RUNTIME_UPGRADE_ADDRESS)
+    const yesOrNo = await askFor('It seems you\'re running EVM hook BAS version, it must be upgraded to the latest? (yes/no) ')
+    if (yesOrNo !== 'yes') return;
+    const runtimeUpgradeConstructor = injectorBytecode(readByteCodeForAddress(RUNTIME_UPGRADE_ADDRESS))
+    const runtimeUpgradeBytecode = await web3.eth.call({
+      data: runtimeUpgradeConstructor,
+    });
+    await upgradeSystemContractByteCode(RUNTIME_UPGRADE_ADDRESS, runtimeUpgradeBytecode);
+    console.log(`Runtime upgrade is upgraded, now you can re-run this command to upgrade smart contracts to the latest version.`);
+    process.exit(0);
+  }
+  // create new runtime upgrade proposal
+  let contractAddress;
+  if (isAuto) {
+    contractAddress = 'auto'
+  } else {
+    contractAddress = await askFor('What address you\'d like to upgrade? (use "auto" for auto mode) ')
+  }
+  if (contractAddress === 'auto') {
+    console.log(`Upgrading smart contract(s): ${UPGRADABLE_ADDRESSES}`);
+    console.log(`---------------------------`);
+    await upgradeSystemContractByteCode(UPGRADABLE_ADDRESSES.slice(0, 1))
+    await upgradeSystemContractByteCode(UPGRADABLE_ADDRESSES.slice(1, 4))
+    await upgradeSystemContractByteCode(UPGRADABLE_ADDRESSES.slice(4))
+    console.log(`---------------------------`);
+    console.log()
+  } else if (!UPGRADABLE_ADDRESSES.includes(contractAddress)) {
     throw new Error(`Not supported contract address: ${contractAddress}`)
   } else {
     await upgradeSystemContractByteCode(contractAddress)

@@ -47,6 +47,7 @@ contract("StakingPool", async (accounts) => {
     assert.equal(res.logs[0].args.validator, validator1)
     assert.equal(res.logs[0].args.staker, staker1)
     assert.equal(res.logs[0].args.amount.toString(), '50000000000000000000')
+    await stakingPool.getValidatorPool(validator1);
     await waitForNextEpoch(parlia);
     res = await stakingPool.claim(validator1, {from: staker1});
     assert.equal(res.logs[0].args.validator, validator1)

@@ -1,8 +1,10 @@
 /** @var web3 {Web3} */
 const BigNumber = require("bignumber.js");
-const {keccak256} = require('ethereumjs-util');
+const {keccak256, toChecksumAddress} = require('ethereumjs-util');
 const AbiCoder = require('web3-eth-abi');
+const RLP = require('rlp');
 
+const InjectorContextHolder = artifacts.require("InjectorContextHolder");
 const ChainConfig = artifacts.require("ChainConfig");
 const Staking = artifacts.require("Staking");
 const SlashingIndicator = artifacts.require("SlashingIndicator");
@@ -10,10 +12,16 @@ const SystemReward = artifacts.require("SystemReward");
 const Governance = artifacts.require("Governance");
 const StakingPool = artifacts.require("StakingPool");
 const RuntimeUpgrade = artifacts.require("RuntimeUpgrade");
+const RuntimeProxy = artifacts.require("RuntimeProxy");
 const DeployerProxy = artifacts.require("DeployerProxy");
-const FakeStaking = artifacts.require("FakeStaking");
+
+const FakeChainConfig = artifacts.require("FakeChainConfig");
 const FakeDeployerProxy = artifacts.require("FakeDeployerProxy");
+const FakeGovernance = artifacts.require("FakeGovernance");
 const FakeRuntimeUpgrade = artifacts.require("FakeRuntimeUpgrade");
+const FakeSlashingIndicator = artifacts.require("FakeSlashingIndicator");
+const FakeStaking = artifacts.require("FakeStaking");
+const FakeStakingPool = artifacts.require("FakeStakingPool");
 const FakeSystemReward = artifacts.require("FakeSystemReward");
 
 const DEFAULT_MOCK_PARAMS = {
@@ -28,7 +36,6 @@ const DEFAULT_MOCK_PARAMS = {
   minStakingAmount: '1000000000000000000',
   genesisValidators: [],
   genesisDeployers: [],
-  runtimeUpgradeEvmHook: '0x0000000000000000000000000000000000000000',
   votingPeriod: '2',
 };
 
@@ -43,10 +50,10 @@ const DEFAULT_CONTRACT_TYPES = {
   DeployerProxy: DeployerProxy,
 };
 
-const createConstructorArgs = (types, args) => {
-  const params = AbiCoder.encodeParameters(types, args)
-  const sig = '0x' + keccak256(Buffer.from('ctor(' + types.join(',') + ')')).toString('hex').substring(0, 8)
-  return sig + params.substring(2)
+const encodeABI = (types, args) => {
+  const sig = keccak256(Buffer.from('initialize(' + types.join(',') + ')')).toString('hex').substring(0, 8),
+    abi = AbiCoder.encodeParameters(types, args).substring(2)
+  return `0x${sig}${abi}`
 }
 
 const newContractUsingTypes = async (owner, params, types = {}) => {
@@ -61,7 +68,6 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     DeployerProxy,
   } = Object.assign({}, DEFAULT_CONTRACT_TYPES, types)
   let {
-    genesisDeployers,
     systemTreasury,
     activeValidatorsLength,
     epochBlockInterval,
@@ -72,60 +78,74 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
     undelegatePeriod,
     minValidatorStakeAmount,
     minStakingAmount,
-    runtimeUpgradeEvmHook,
     votingPeriod,
+    genesisDeployers,
   } = Object.assign({}, DEFAULT_MOCK_PARAMS, params)
-  // factory contracts
-  const staking = await Staking.new(createConstructorArgs(
-    ['address[]', 'uint256[]', 'uint16'],
-    [genesisValidators, genesisValidators.map(() => '0'), '0'])
-  );
-  const slashingIndicator = await SlashingIndicator.new(createConstructorArgs([], []));
+  // convert single param to the object
   if (typeof systemTreasury === 'string') {
     systemTreasury = {[systemTreasury]: '10000'}
   }
-  const systemReward = await SystemReward.new(createConstructorArgs(['address[]', 'uint16[]'], [Object.keys(systemTreasury), Object.values(systemTreasury)]));
-  const governance = await Governance.new(createConstructorArgs(['uint256'], [votingPeriod]));
-  const chainConfig = await ChainConfig.new(createConstructorArgs(
-    ["uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"],
-    [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount])
-  );
-  const stakingPool = await StakingPool.new(createConstructorArgs([], []));
-  const runtimeUpgrade = await RuntimeUpgrade.new(createConstructorArgs(['address'], [runtimeUpgradeEvmHook]));
-  const deployerProxy = await DeployerProxy.new(createConstructorArgs(['address[]'], [genesisDeployers]));
-  // init them all
-  for (const contract of [slashingIndicator, staking, systemReward, stakingPool, governance, chainConfig, runtimeUpgrade, deployerProxy]) {
-    await contract.initManually(
-      staking.address,
-      slashingIndicator.address,
-      systemReward.address,
-      stakingPool.address,
-      governance.address,
-      chainConfig.address,
-      runtimeUpgrade.address,
-      deployerProxy.address,
-    );
+  // precompute system contract addresses
+  const latestNonce = await web3.eth.getTransactionCount(owner, 'pending')
+  const systemAddresses = []
+  for (let i = 0; i < 8; i++) {
+    const nonceHash = keccak256(RLP.encode([owner, latestNonce + i])).toString('hex');
+    systemAddresses.push(toChecksumAddress(`0x${nonceHash.substring(24)}`));
   }
+  const runtimeUpgradeAddress = systemAddresses[6];
+  // encode constructor for injector
+  const injectorArgs = AbiCoder.encodeParameters(['address', 'address', 'address', 'address', 'address', 'address', 'address', 'address',], systemAddresses)
+  const injectorBytecode = ({bytecode}) => {
+    return bytecode + injectorArgs.substr(2)
+  }
+  // factory system contracts
+  const staking = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Staking), encodeABI(['address[]', 'address[]', 'uint256[]', 'uint16'], [genesisValidators, genesisValidators, genesisValidators.map(() => '0'), '0']), {from: owner});
+  const slashingIndicator = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SlashingIndicator), encodeABI([], []), {from: owner});
+  const systemReward = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(SystemReward), encodeABI(['address[]', 'uint16[]'], [Object.keys(systemTreasury), Object.values(systemTreasury)]), {from: owner});
+  const stakingPool = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(StakingPool), encodeABI([], []), {from: owner});
+  const governance = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(Governance), encodeABI(['uint256', 'string'], [votingPeriod, 'Governance']), {from: owner});
+  const chainConfig = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(ChainConfig), encodeABI(['uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint32', 'uint256', 'uint256'], [activeValidatorsLength, epochBlockInterval, misdemeanorThreshold, felonyThreshold, validatorJailEpochLength, undelegatePeriod, minValidatorStakeAmount, minStakingAmount]), {from: owner});
+  const runtimeUpgrade = await RuntimeUpgrade.new(...systemAddresses, {from: owner});
+  const deployerProxy = await RuntimeProxy.new(runtimeUpgradeAddress, injectorBytecode(DeployerProxy), encodeABI(['address[]'], [genesisDeployers]), {from: owner});
+  // make sure runtime upgrade address is correct
+  if (runtimeUpgrade.address.toLowerCase() !== runtimeUpgradeAddress.toLowerCase()) {
+    console.log(`System addresses: ${JSON.stringify(systemAddresses, null, 2)}`)
+    throw new Error(`Runtime upgrade position mismatched, its not allowed (${runtimeUpgrade.address} != ${runtimeUpgradeAddress})`)
+  }
+  // run consensus init
+  await runtimeUpgrade.init({from: owner});
+  await (await InjectorContextHolder.at(staking.address)).init();
+  await (await InjectorContextHolder.at(slashingIndicator.address)).init({from: owner});
+  await (await InjectorContextHolder.at(systemReward.address)).init({from: owner});
+  await (await InjectorContextHolder.at(stakingPool.address)).init({from: owner});
+  await (await InjectorContextHolder.at(governance.address)).init({from: owner});
+  await (await InjectorContextHolder.at(chainConfig.address)).init({from: owner});
+  await (await InjectorContextHolder.at(deployerProxy.address)).init({from: owner});
+  // map proxies to the correct ABIs
   return {
-    staking,
-    parlia: staking,
-    slashingIndicator,
-    systemReward,
-    stakingPool,
-    governance,
-    chainConfig,
-    config: chainConfig,
+    staking: await Staking.at(staking.address),
+    parlia: await Staking.at(staking.address),
+    slashingIndicator: await SlashingIndicator.at(slashingIndicator.address),
+    systemReward: await SystemReward.at(systemReward.address),
+    stakingPool: await StakingPool.at(stakingPool.address),
+    governance: await Governance.at(governance.address),
+    chainConfig: await ChainConfig.at(chainConfig.address),
+    config: await ChainConfig.at(chainConfig.address),
     runtimeUpgrade,
-    deployer: deployerProxy,
-    deployerProxy,
+    deployer: await DeployerProxy.at(deployerProxy.address),
+    deployerProxy: await DeployerProxy.at(deployerProxy.address),
   }
 }
 
 const newMockContract = async (owner, params = {}) => {
   return newContractUsingTypes(owner, params, {
-    Staking: FakeStaking,
-    RuntimeUpgrade: FakeRuntimeUpgrade,
+    ChainConfig: FakeChainConfig,
     DeployerProxy: FakeDeployerProxy,
+    Governance: FakeGovernance,
+    RuntimeUpgrade: FakeRuntimeUpgrade,
+    SlashingIndicator: FakeSlashingIndicator,
+    Staking: FakeStaking,
+    StakingPool: FakeStakingPool,
     SystemReward: FakeSystemReward,
   });
 }
@@ -157,7 +177,7 @@ const expectError = async (promise, text) => {
   try {
     await promise;
   } catch (e) {
-    if (e.message.includes(text)) {
+    if (e.message.includes(text) || !text) {
       return;
     }
     console.error(new Error(`Unexpected error: ${e.message}`))
@@ -166,14 +186,14 @@ const expectError = async (promise, text) => {
   assert.fail();
 }
 
-const extractTxCost = (executionResult) => {
+const extractTxCost = async (executionResult) => {
   let {receipt: {gasUsed, effectiveGasPrice}} = executionResult;
   if (typeof effectiveGasPrice === 'string') {
-    effectiveGasPrice = effectiveGasPrice.substring(2)
+    effectiveGasPrice = new BigNumber(effectiveGasPrice.substring(2), 16)
   } else {
-    effectiveGasPrice = '1' // for coverage
+    effectiveGasPrice = new BigNumber(await web3.eth.getGasPrice(), 10)
   }
-  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(new BigNumber(effectiveGasPrice, 16));
+  executionResult.txCost = new BigNumber(gasUsed).multipliedBy(effectiveGasPrice);
   return executionResult;
 }
 
@@ -193,6 +213,5 @@ module.exports = {
   extractTxCost,
   waitForNextEpoch,
   advanceBlock,
-  createConstructorArgs,
   advanceBlocks,
 }

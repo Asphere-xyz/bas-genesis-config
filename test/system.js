@@ -121,10 +121,10 @@ contract("SystemReward", async (accounts) => {
   });
   it("share distribution must be valid", async () => {
     const {systemReward} = await newMockContract(owner)
-    await expectError(systemReward.updateDistributionShare([], []), 'SystemReward: bad share distribution');
-    await expectError(systemReward.updateDistributionShare([treasury], ['0']), 'SystemReward: bad share distribution');
-    await expectError(systemReward.updateDistributionShare([treasury], ['10001']), 'SystemReward: bad share distribution');
-    await expectError(systemReward.updateDistributionShare([treasury], ['1']), 'SystemReward: bad share distribution');
-    await expectError(systemReward.updateDistributionShare([treasury], ['9999']), 'SystemReward: bad share distribution');
+    await expectError(systemReward.updateDistributionShare([], []), 'bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['0']), 'bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['10001']), 'bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['1']), 'bad share distribution');
+    await expectError(systemReward.updateDistributionShare([treasury], ['9999']), 'bad share distribution');
   });
 });

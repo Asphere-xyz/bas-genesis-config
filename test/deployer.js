@@ -25,7 +25,7 @@ contract("DeployerProxy", async (accounts) => {
   });
   it("disable/enable smart contract", async () => {
     const from = '0x0000000000000000000000000000000000000001';
-    const {deployer} = await newMockContract(from, {
+    const {deployer} = await newMockContract(owner, {
       genesisDeployers: [from],
     });
     const r1 = await deployer.registerDeployedContract(from, '0x0000000000000000000000000000000000000222');
@@ -48,7 +48,7 @@ contract("DeployerProxy", async (accounts) => {
   it("contract deployment is not possible w/o whitelist", async () => {
     const {deployer} = await newMockContract(owner);
     // try to register w/o whitelist
-    await expectError(deployer.registerDeployedContract(owner, '0x0000000000000000000000000000000000000123'), 'Deployer: deployer is not allowed');
+    await expectError(deployer.registerDeployedContract(owner, '0x0000000000000000000000000000000000000123'), 'deployer is not allowed');
     // let owner be a deployer
     await deployer.addDeployer(owner)
     const r1 = await deployer.registerDeployedContract(owner, '0x0000000000000000000000000000000000000123');

@@ -3,11 +3,9 @@ pragma solidity ^0.8.0;
 
 interface IRuntimeUpgrade {
 
-    function getEvmHookAddress() external view returns (address);
+    function isEIP1967() external view returns (bool);
 
-    function upgradeSystemSmartContract(address systemContractAddress, bytes calldata newByteCode, bytes calldata applyFunction) external;
+    function upgradeSystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external payable;
 
-    function deploySystemSmartContract(address systemContractAddress, bytes calldata newByteCode, bytes calldata applyFunction) external;
-
-    function getSystemContracts() external view returns (address[] memory);
+    function deploySystemSmartContract(address payable account, bytes calldata bytecode, bytes calldata data) external payable;
 }

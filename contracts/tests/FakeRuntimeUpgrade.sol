@@ -5,23 +5,40 @@ import "../RuntimeUpgrade.sol";
 
 contract FakeRuntimeUpgrade is RuntimeUpgrade {
 
-    constructor(bytes memory constructorParams) RuntimeUpgrade(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) RuntimeUpgrade(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function upgradeSystemSmartContract(
-        address systemContractAddress,
-        bytes calldata newByteCode,
-        bytes calldata applyFunction
-    ) external override {
-        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction, IRuntimeUpgradeEvmHook.upgradeTo.selector);
+    modifier onlyFromCoinbase() override {
+        _;
     }
 
-    function deploySystemSmartContract(
-        address systemContractAddress,
-        bytes calldata newByteCode,
-        bytes calldata applyFunction
-    ) external virtual override {
-        _upgradeSystemSmartContract(systemContractAddress, newByteCode, applyFunction, IRuntimeUpgradeEvmHook.deployTo.selector);
-        _deployedSystemContracts.push(systemContractAddress);
+    modifier onlyFromSlashingIndicator() override {
+        _;
+    }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
     }
 }
