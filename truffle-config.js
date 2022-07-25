@@ -18,7 +18,7 @@ module.exports = {
       settings: {
         optimizer: {
           enabled: true,
-          runs: 20
+          runs: 100
         }
       }
     }
@@ -27,7 +27,8 @@ module.exports = {
     develop: {
       host: "localhost",
       port: 8545,
-      network_id: "*"
+      network_id: "*",
+      gas: 100_000_000
     },
     ganache: {
       host: "localhost",

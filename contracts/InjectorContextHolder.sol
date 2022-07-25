@@ -4,20 +4,22 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/utils/StorageSlot.sol";
 
-import "./libs/Multicall.sol";
+import "./common/RetryMixin.sol";
+import "./common/RetryableProxy.sol";
+import "./common/Multicall.sol";
 
-import "./interfaces/IChainConfig.sol";
-import "./interfaces/IGovernance.sol";
-import "./interfaces/ISlashingIndicator.sol";
-import "./interfaces/ISystemReward.sol";
-import "./interfaces/IValidatorSet.sol";
-import "./interfaces/IStaking.sol";
-import "./interfaces/IRuntimeUpgrade.sol";
-import "./interfaces/IStakingPool.sol";
-import "./interfaces/IInjectorContextHolder.sol";
-import "./interfaces/IDeployerProxy.sol";
+import "./staking/interfaces/IStakingConfig.sol";
+import "./staking/interfaces/IStaking.sol";
+import "./staking/interfaces/IStakingPool.sol";
+import "./blockchain/interfaces/IRuntimeUpgrade.sol";
+import "./blockchain/interfaces/IDeployerProxy.sol";
+import "./blockchain/interfaces/IGovernance.sol";
+import "./blockchain/interfaces/ISlashingIndicator.sol";
+import "./blockchain/interfaces/ISystemReward.sol";
+import "./relay-hub/interfaces/IRelayHub.sol";
+import "./relay-hub/interfaces/ICrossChainBridge.sol";
 
-abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorContextHolder {
+abstract contract InjectorContextHolder is Initializable, Multicall {
 
     // default layout offset, it means that all inherited smart contract's storage layout must start from 100
     uint256 internal constant _LAYOUT_OFFSET = 100;
@@ -29,9 +31,11 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
     ISystemReward internal immutable _SYSTEM_REWARD_CONTRACT;
     IStakingPool internal immutable _STAKING_POOL_CONTRACT;
     IGovernance internal immutable _GOVERNANCE_CONTRACT;
-    IChainConfig internal immutable _CHAIN_CONFIG_CONTRACT;
+    IStakingConfig internal immutable _STAKING_CONFIG_CONTRACT;
     IRuntimeUpgrade internal immutable _RUNTIME_UPGRADE_CONTRACT;
     IDeployerProxy internal immutable _DEPLOYER_PROXY_CONTRACT;
+    IRelayHub internal immutable _RELAY_HUB_CONTRACT;
+    ICrossChainBridge internal immutable _CROSS_CHAIN_BRIDGE_CONTRACT;
 
     // delayed initializer input data (only for parlia mode)
     bytes internal _delayedInitializer;
@@ -41,29 +45,35 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
     // reserved (2 for init and initializer)
     uint256[_LAYOUT_OFFSET - _SKIP_OFFSET - 2] private __reserved;
 
+    struct ConstructorArguments {
+        IStaking stakingContract;
+        ISlashingIndicator slashingIndicatorContract;
+        ISystemReward systemRewardContract;
+        IStakingPool stakingPoolContract;
+        IGovernance governanceContract;
+        IStakingConfig chainConfigContract;
+        IRuntimeUpgrade runtimeUpgradeContract;
+        IDeployerProxy deployerProxyContract;
+        IRelayHub relayHubContract;
+        ICrossChainBridge crossChainBridgeContract;
+    }
+
     error OnlyCoinbase(address coinbase);
     error OnlySlashingIndicator();
     error OnlyGovernance();
     error OnlyBlock(uint64 blockNumber);
 
-    constructor(
-        IStaking stakingContract,
-        ISlashingIndicator slashingIndicatorContract,
-        ISystemReward systemRewardContract,
-        IStakingPool stakingPoolContract,
-        IGovernance governanceContract,
-        IChainConfig chainConfigContract,
-        IRuntimeUpgrade runtimeUpgradeContract,
-        IDeployerProxy deployerProxyContract
-    ) {
-        _STAKING_CONTRACT = stakingContract;
-        _SLASHING_INDICATOR_CONTRACT = slashingIndicatorContract;
-        _SYSTEM_REWARD_CONTRACT = systemRewardContract;
-        _STAKING_POOL_CONTRACT = stakingPoolContract;
-        _GOVERNANCE_CONTRACT = governanceContract;
-        _CHAIN_CONFIG_CONTRACT = chainConfigContract;
-        _RUNTIME_UPGRADE_CONTRACT = runtimeUpgradeContract;
-        _DEPLOYER_PROXY_CONTRACT = deployerProxyContract;
+    constructor(ConstructorArguments memory constructorArgs) {
+        _STAKING_CONTRACT = constructorArgs.stakingContract;
+        _SLASHING_INDICATOR_CONTRACT = constructorArgs.slashingIndicatorContract;
+        _SYSTEM_REWARD_CONTRACT = constructorArgs.systemRewardContract;
+        _STAKING_POOL_CONTRACT = constructorArgs.stakingPoolContract;
+        _GOVERNANCE_CONTRACT = constructorArgs.governanceContract;
+        _STAKING_CONFIG_CONTRACT = constructorArgs.chainConfigContract;
+        _RUNTIME_UPGRADE_CONTRACT = constructorArgs.runtimeUpgradeContract;
+        _DEPLOYER_PROXY_CONTRACT = constructorArgs.deployerProxyContract;
+        _RELAY_HUB_CONTRACT = constructorArgs.relayHubContract;
+        _CROSS_CHAIN_BRIDGE_CONTRACT = constructorArgs.crossChainBridgeContract;
     }
 
     function useDelayedInitializer(bytes memory delayedInitializer) external onlyBlock(0) {
@@ -72,11 +82,11 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
 
     function init() external onlyBlock(1) virtual {
         if (_delayedInitializer.length > 0) {
-            _selfDelegateCall(_delayedInitializer);
+            _delegateCall(_delayedInitializer);
         }
     }
 
-    function isInitialized() public view override returns (bool) {
+    function isInitialized() public view returns (bool) {
         // openzeppelin's class "Initializable" doesnt expose any methods for fetching initialisation status
         StorageSlot.Uint256Slot storage initializedSlot = StorageSlot.getUint256Slot(bytes32(0x0000000000000000000000000000000000000000000000000000000000000000));
         return initializedSlot.value > 0;
