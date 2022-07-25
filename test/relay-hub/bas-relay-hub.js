@@ -199,8 +199,11 @@ contract("RelayHub", async (accounts) => {
     );
   })
   it("chapel transition should work at block 2125200", async () => {
-    const defaultVerificationFunction = await ParliaBlockVerifier.new(),
-      basRelayHub = await RelayHub.new(defaultVerificationFunction.address, ZERO_ADDRESS);
+    const defaultVerificationFunction = await ParliaBlockVerifier.new();
+    const {relayHub: basRelayHub} = await newMockContract(owner, {
+      rootDefaultVerificationFunction: defaultVerificationFunction.address,
+      childDefaultVerificationFunction: defaultVerificationFunction.address,
+    })
     // init with block 2125000
     await basRelayHub.registerUsingCheckpoint(
       '97',
