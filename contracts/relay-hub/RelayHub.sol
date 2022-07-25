@@ -362,7 +362,10 @@ contract RelayHub is InjectorContextHolder, IRelayHub, IValidatorChecker {
         for (uint256 i = 0; i < validatorSet.length; i++) {
             // find validator's index and make sure it exists in the validator set
             uint256 rawIndex = validatorHistory.allValidators._inner._indexes[bytes32(uint256(uint160(validatorSet[i])))];
-            require(rawIndex > 0 && bitMap.get(rawIndex - 1), "bad validator");
+            if (rawIndex == 0 || !bitMap.get(rawIndex - 1)) {
+                // its safe to skip because we might have produced block by validators from the next set
+                continue;
+            }
             uint256 index = rawIndex - 1;
             // mark used validators to be sure quorum is well-calculated
             uint256 usedMask = 1 << (index & 0xff);
