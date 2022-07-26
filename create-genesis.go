@@ -249,7 +249,7 @@ func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Addre
 	} else {
 		bytecode = createProxyBytecodeWithConstructor(rawArtifact, typeNames, params)
 	}
-	result, _, err := virtualMachine.CreateWithAddress(common.Address{}, bytecode, 10_000_000, big.NewInt(0), systemContract)
+	result, _, err := virtualMachine.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
 		traceCallError(result)
 		panic(err)
