@@ -262,8 +262,9 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
   console.log(`isEIP1967: ${isNewRuntimeUpgrade}`);
   if (!isNewRuntimeUpgrade) {
     const existingRuntimeUpgradeCode = await web3.eth.getCode(RUNTIME_UPGRADE_ADDRESS)
-    const yesOrNo = await askFor('It seems you\'re running EVM hook BAS version, it must be upgraded to the latest? (yes/no) ')
+    const yesOrNo = await askFor('It seems you\'re running legacy BAS version, its incompatible with new smart contracts. Would you like to process, it might break smart contract upgrade mechanism? (yes/no) ')
     if (yesOrNo !== 'yes') return;
+    throw new Error(`Sorry, not fully tested yet, if you really want to upgrade contract then comment this line.`)
     const runtimeUpgradeConstructor = injectorBytecode(readByteCodeForAddress(RUNTIME_UPGRADE_ADDRESS))
     const runtimeUpgradeBytecode = await web3.eth.call({
       data: runtimeUpgradeConstructor,
