@@ -64,6 +64,8 @@ abstract contract InjectorContextHolder is Initializable, Multicall, IInjectorCo
         _CHAIN_CONFIG_CONTRACT = chainConfigContract;
         _RUNTIME_UPGRADE_CONTRACT = runtimeUpgradeContract;
         _DEPLOYER_PROXY_CONTRACT = deployerProxyContract;
+        // disable initializer for impl contract
+        _disableInitializers();
     }
 
     function useDelayedInitializer(bytes memory delayedInitializer) external onlyBlock(0) {
