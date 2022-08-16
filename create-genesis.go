@@ -8,10 +8,12 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/common/systemcontract"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/gorilla/mux"
 	"io/fs"
 	"io/ioutil"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -326,7 +328,7 @@ func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Addre
 	delete(genesis.Alloc, common.Address{})
 }
 
-func createGenesisConfig(config genesisConfig, targetFile string) error {
+func createGenesisConfig(config genesisConfig, targetFile string) ([]byte, error) {
 	genesis := defaultGenesisConfig(config)
 	if len(config.Owners) == 0 {
 		config.Owners = config.Validators
@@ -340,11 +342,11 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	for _, v := range config.Validators {
 		rawInitialStake, ok := config.InitialStakes[v]
 		if !ok {
-			return fmt.Errorf("initial stake is not found for validator: %s", v.Hex())
+			return nil, fmt.Errorf("initial stake is not found for validator: %s", v.Hex())
 		}
 		initialStake, err := hexutil.DecodeBig(rawInitialStake)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		initialStakes = append(initialStakes, initialStake)
 		initialStakeTotal.Add(initialStakeTotal, initialStake)
@@ -395,7 +397,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	for key, value := range config.Faucet {
 		balance, ok := new(big.Int).SetString(value[2:], 16)
 		if !ok {
-			return fmt.Errorf("failed to parse number (%s)", value)
+			return nil, fmt.Errorf("failed to parse number (%s)", value)
 		}
 		genesis.Alloc[key] = core.GenesisAccount{
 			Balance: balance,
@@ -405,12 +407,12 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	newJson, _ := json.MarshalIndent(genesis, "", "  ")
 	if targetFile == "stdout" {
 		_, err := os.Stdout.Write(newJson)
-		return err
+		return newJson, err
 	} else if targetFile == "stderr" {
 		_, err := os.Stderr.Write(newJson)
-		return err
+		return newJson, err
 	}
-	return ioutil.WriteFile(targetFile, newJson, fs.ModePerm)
+	return newJson, ioutil.WriteFile(targetFile, newJson, fs.ModePerm)
 }
 
 func decimalToBigInt(value *math.HexOrDecimal256) *big.Int {
@@ -560,8 +562,71 @@ var devNetConfig = genesisConfig{
 	},
 }
 
+func returnError(writer http.ResponseWriter, err error) {
+	writer.WriteHeader(500)
+	_, _ = writer.Write([]byte(err.Error()))
+}
+
+func handleCorsRequest(w http.ResponseWriter, r *http.Request) bool {
+	var origin string
+	if origin = r.Header.Get("Origin"); origin == "" {
+		return false
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	if r.Method != "OPTIONS" || r.Header.Get("Access-Control-Request-Method") == "" {
+		return false
+	}
+	headers := []string{"Content-Type", "Accept"}
+	w.Header().Set("Access-Control-Allow-Headers", strings.Join(headers, ","))
+	methods := []string{"GET", "HEAD", "POST", "PUT", "DELETE"}
+	w.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ","))
+	return true
+}
+
+func httpRpcServer() {
+	r := mux.NewRouter()
+	r.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				returnError(writer, err.(error))
+				return
+			}
+		}()
+		if handleCorsRequest(writer, request) {
+			return
+		}
+		input, err := ioutil.ReadAll(request.Body)
+		if err != nil {
+			returnError(writer, err)
+			return
+		}
+		genesis := &genesisConfig{}
+		err = json.Unmarshal(input, genesis)
+		if err != nil {
+			returnError(writer, err)
+			return
+		}
+		result, err := createGenesisConfig(*genesis, "stdout")
+		if err != nil {
+			returnError(writer, err)
+			return
+		}
+		_, _ = writer.Write(result)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(200)
+	})
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		panic(err)
+	}
+}
+
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--http" {
+		httpRpcServer()
+		return
+	}
 	if len(args) > 0 {
 		fileContents, err := os.ReadFile(args[0])
 		if err != nil {
@@ -576,18 +641,18 @@ func main() {
 		if len(args) > 1 {
 			outputFile = args[1]
 		}
-		err = createGenesisConfig(*genesis, outputFile)
+		_, err = createGenesisConfig(*genesis, outputFile)
 		if err != nil {
 			panic(err)
 		}
 		return
 	}
 	fmt.Printf("building local net\n")
-	if err := createGenesisConfig(localNetConfig, "localnet.json"); err != nil {
+	if _, err := createGenesisConfig(localNetConfig, "localnet.json"); err != nil {
 		panic(err)
 	}
 	fmt.Printf("\nbuilding dev net\n")
-	if err := createGenesisConfig(devNetConfig, "devnet.json"); err != nil {
+	if _, err := createGenesisConfig(devNetConfig, "devnet.json"); err != nil {
 		panic(err)
 	}
 	fmt.Printf("\n")
