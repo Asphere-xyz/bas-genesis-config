@@ -94,7 +94,7 @@ contract SystemReward is InjectorContextHolder, ISystemReward {
         uint256 totalRewards = address(this).balance * _STAKING_CONFIG_CONTRACT.getFinalityRewardRatio() / 1e4;
         for (uint256 i = 0; i < validators.length; i++) {
             uint256 validatorRewards = totalRewards * weights[i] / totalWeight;
-            _STAKING_CONTRACT.deposit{value: validatorRewards}(validators[i]);
+            _STAKING_CONTRACT.distributeRewards{value: validatorRewards}(validators[i], validatorRewards);
         }
     }
 

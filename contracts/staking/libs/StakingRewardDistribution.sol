@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
+import "../interfaces/IStaking.sol";
+
 import "./StakingStorageLayout.sol";
 
 contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStakingRewardDistribution {
 
-    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
+    constructor(IStakingConfig stakingConfig, StakingParams memory stakingParams) StakingStorageLayout(stakingConfig, stakingParams) {
     }
-
+    
     function getValidatorDelegation(address validatorAddress, address delegator) external view override returns (
         uint256 delegatedAmount,
         uint64 atEpoch
@@ -87,7 +89,7 @@ contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStaking
 
     function _delegateTo(address fromDelegator, address toValidator, uint256 amount) internal {
         // check is minimum delegate amount
-        require(amount >= _STAKING_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "too low");
+        require(amount >= _STAKING_CONFIG.getMinStakingAmount() && amount != 0, "too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "no remainder");
         // make sure amount is greater than min staking amount
         // make sure validator exists at least
@@ -124,7 +126,7 @@ contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStaking
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
         // check minimum delegate amount
-        require(amount >= _STAKING_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "too low");
+        require(amount >= _STAKING_CONFIG.getMinStakingAmount() && amount != 0, "too low");
         require(amount % BALANCE_COMPACT_PRECISION == 0, "no remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
@@ -153,7 +155,7 @@ contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStaking
             delegation.delegateQueue.push(DelegationOpDelegate({epoch : beforeEpoch, amount : nextDelegatedAmount}));
         }
         // create new undelegate queue operation with soft lock
-        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint112(amount / BALANCE_COMPACT_PRECISION), epoch : beforeEpoch + _STAKING_CONFIG_CONTRACT.getUndelegatePeriod()}));
+        delegation.undelegateQueue.push(DelegationOpUndelegate({amount : uint112(amount / BALANCE_COMPACT_PRECISION), epoch : beforeEpoch + _STAKING_CONFIG.getUndelegatePeriod()}));
         // emit event with the next epoch number
         emit Undelegated(fromValidator, toDelegator, amount, beforeEpoch);
     }
@@ -293,7 +295,7 @@ contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStaking
         _safeTransferWithGasLimit(payable(validator.ownerAddress), availableFunds);
         // if we have system fee then pay it to treasury account
         if (systemFee > 0) {
-            _unsafeTransfer(payable(address(_SYSTEM_REWARD_CONTRACT)), systemFee);
+            _unsafeTransfer(payable(address(_TREASURY_ADDRESS)), systemFee);
         }
         emit ValidatorOwnerClaimed(validator.validatorAddress, availableFunds, beforeEpoch);
     }
@@ -310,7 +312,7 @@ contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStaking
 
     function _calcValidatorSnapshotEpochPayout(ValidatorSnapshot memory validatorSnapshot) internal view returns (uint256 delegatorFee, uint256 ownerFee, uint256 systemFee) {
         // detect validator slashing to transfer all rewards to treasury
-        if (validatorSnapshot.slashesCount >= _STAKING_CONFIG_CONTRACT.getMisdemeanorThreshold()) {
+        if (validatorSnapshot.slashesCount >= _STAKING_CONFIG.getMisdemeanorThreshold()) {
             return (delegatorFee = 0, ownerFee = 0, systemFee = validatorSnapshot.totalRewards);
         } else if (validatorSnapshot.totalDelegated == 0) {
             return (delegatorFee = 0, ownerFee = validatorSnapshot.totalRewards, systemFee = 0);
@@ -326,7 +328,7 @@ contract StakingRewardDistribution is StakingStorageLayout, RetryMixin, IStaking
     function _calcAvailableForRedelegateAmount(uint256 claimableRewards) internal view returns (uint256 amountToStake, uint256 rewardsDust) {
         // for redelegate we must split amount into stake-able and dust
         amountToStake = (claimableRewards / BALANCE_COMPACT_PRECISION) * BALANCE_COMPACT_PRECISION;
-        if (amountToStake < _STAKING_CONFIG_CONTRACT.getMinStakingAmount()) {
+        if (amountToStake < _STAKING_CONFIG.getMinStakingAmount()) {
             return (0, claimableRewards);
         }
         // if we have dust remaining after re-stake then send it to user (we can't keep it in the contract)

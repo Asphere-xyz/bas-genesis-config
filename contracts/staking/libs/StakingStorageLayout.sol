@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "../../InjectorContextHolder.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
-abstract contract StakingStorageLayout is InjectorContextHolder, IStakingEvents {
+import "../interfaces/IStaking.sol";
+import "../interfaces/IStakingConfig.sol";
+
+import "../../common/RetryMixin.sol";
+
+abstract contract StakingStorageLayout is IStakingEvents {
 
     /**
     * This constant indicates precision of storing compact balances in the storage or floating point. Since default
@@ -53,6 +58,18 @@ abstract contract StakingStorageLayout is InjectorContextHolder, IStakingEvents 
      * execute one by one. Somtimes gas might not be enough for the tx execution.
      */
     uint32 internal constant CLAIM_BEFORE_GAS = 100_000;
+
+    IStakingConfig internal immutable _STAKING_CONFIG;
+
+    struct StakingParams {
+        address governance;
+        address slasher;
+        address treasury;
+    }
+
+    address internal immutable _GOVERNANCE_ADDRESS;
+    address internal immutable _SLASHER_ADDRESS;
+    address internal immutable _TREASURY_ADDRESS;
 
     enum ValidatorStatus {
         NotFound,
@@ -106,12 +123,33 @@ abstract contract StakingStorageLayout is InjectorContextHolder, IStakingEvents 
     // mapping with validator snapshots per each epoch (validator -> epoch -> snapshot)
     mapping(address => mapping(uint64 => ValidatorSnapshot)) internal _validatorSnapshots;
 
+    constructor(IStakingConfig stakingConfig, StakingParams memory stakingParams) {
+        _STAKING_CONFIG = stakingConfig;
+        _GOVERNANCE_ADDRESS = stakingParams.governance;
+        _SLASHER_ADDRESS = stakingParams.slasher;
+        _TREASURY_ADDRESS = stakingParams.treasury;
+    }
+
     function _currentEpoch() internal view returns (uint64) {
-        return uint64(block.number / _STAKING_CONFIG_CONTRACT.getEpochBlockInterval());
+        return uint64(block.number / _STAKING_CONFIG.getEpochBlockInterval());
     }
 
     function _nextEpoch() internal view returns (uint64) {
         return _currentEpoch() + 1;
+    }
+
+    modifier onlyFromGovernor() {
+        if (_GOVERNANCE_ADDRESS != address(0x00)) {
+            require(_GOVERNANCE_ADDRESS == msg.sender, "only governance");
+        }
+        _;
+    }
+
+    modifier onlyFromSlasher() {
+        if (_SLASHER_ADDRESS != address(0x00)) {
+            require(_SLASHER_ADDRESS == msg.sender, "only slasher");
+        }
+        _;
     }
 
     function _touchValidatorSnapshot(Validator memory validator, uint64 epoch) internal returns (ValidatorSnapshot storage) {

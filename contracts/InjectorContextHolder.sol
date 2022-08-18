@@ -74,6 +74,8 @@ abstract contract InjectorContextHolder is Initializable, Multicall {
         _DEPLOYER_PROXY_CONTRACT = constructorArgs.deployerProxyContract;
         _RELAY_HUB_CONTRACT = constructorArgs.relayHubContract;
         _CROSS_CHAIN_BRIDGE_CONTRACT = constructorArgs.crossChainBridgeContract;
+        // disable initializers for impl contracts
+        _disableInitializers();
     }
 
     function useDelayedInitializer(bytes memory delayedInitializer) external onlyBlock(0) {

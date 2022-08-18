@@ -115,6 +115,8 @@ var governanceAddress = common.HexToAddress("0x000000000000000000000000000000000
 var chainConfigAddress = common.HexToAddress("0x0000000000000000000000000000000000007003")
 var runtimeUpgradeAddress = common.HexToAddress("0x0000000000000000000000000000000000007004")
 var deployerProxyAddress = common.HexToAddress("0x0000000000000000000000000000000000007005")
+var relayHubAddress = common.HexToAddress("0x0000000000000000000000000000000000007006")
+var crossChainBridgeAddress = common.HexToAddress("0x0000000000000000000000000000000000007007")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 
 //go:embed build/contracts/RuntimeProxy.json
@@ -198,6 +200,9 @@ func hexBytesToNormalBytes(value []hexutil.Bytes) (result [][]byte) {
 }
 
 func traceCallError(deployedBytecode []byte) {
+	if len(deployedBytecode) < 64 {
+		return
+	}
 	for _, c := range deployedBytecode[64:] {
 		if c >= 32 && c <= unicode.MaxASCII {
 			print(string(c))
@@ -230,8 +235,8 @@ func createInitializer(typeNames []string, params []interface{}) []byte {
 
 func createSimpleBytecode(rawArtifact []byte) []byte {
 	constructorArgs, err := newArguments(
-		"address", "address", "address", "address", "address", "address", "address", "address").Pack(
-		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress)
+		"address", "address", "address", "address", "address", "address", "address", "address", "address", "address").Pack(
+		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress, relayHubAddress, crossChainBridgeAddress)
 	if err != nil {
 		panic(err)
 	}
@@ -240,8 +245,8 @@ func createSimpleBytecode(rawArtifact []byte) []byte {
 
 func createProxyBytecodeWithConstructor(rawArtifact []byte, initTypes []string, initArgs []interface{}) []byte {
 	constructorArgs, err := newArguments(
-		"address", "address", "address", "address", "address", "address", "address", "address").Pack(
-		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress)
+		"address", "address", "address", "address", "address", "address", "address", "address", "address", "address").Pack(
+		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress, relayHubAddress, crossChainBridgeAddress)
 	if err != nil {
 		panic(err)
 	}

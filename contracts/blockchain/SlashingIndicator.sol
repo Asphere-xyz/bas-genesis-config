@@ -13,6 +13,6 @@ contract SlashingIndicator is InjectorContextHolder, ISlashingIndicator {
 
     function slash(address validator) external onlyFromCoinbase virtual override {
         // we need this proxy to be compatible with BSC
-        _STAKING_CONTRACT.slash(validator);
+        _STAKING_CONTRACT.slashValidator(validator);
     }
 }

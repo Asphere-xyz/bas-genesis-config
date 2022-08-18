@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "../InjectorContextHolder.sol";
+import "./interfaces/IStakingConfig.sol";
 
-contract StakingConfig is InjectorContextHolder, IStakingConfig {
+abstract contract AbstractStakingConfig is IStakingConfig {
+
+    address internal immutable _GOVERNANCE_ADDRESS;
 
     event ActiveValidatorsLengthChanged(uint32 prevValue, uint32 newValue);
     event EpochBlockIntervalChanged(uint32 prevValue, uint32 newValue);
@@ -27,47 +29,24 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         uint16 finalityRewardRatio;
     }
 
-    StakingConfigSlot0 private _slot0;
+    StakingConfigSlot0 internal _slot0;
 
-    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
+    constructor(address governance) {
+        _GOVERNANCE_ADDRESS = governance;
     }
 
-    function initialize(
-        uint32 activeValidatorsLength,
-        uint32 epochBlockInterval,
-        uint32 misdemeanorThreshold,
-        uint32 felonyThreshold,
-        uint32 validatorJailEpochLength,
-        uint32 undelegatePeriod,
-        uint256 minValidatorStakeAmount,
-        uint256 minStakingAmount,
-        uint16 finalityRewardRatio
-    ) external initializer {
-        _slot0.activeValidatorsLength = activeValidatorsLength;
-        emit ActiveValidatorsLengthChanged(0, activeValidatorsLength);
-        _slot0.epochBlockInterval = epochBlockInterval;
-        emit EpochBlockIntervalChanged(0, epochBlockInterval);
-        _slot0.misdemeanorThreshold = misdemeanorThreshold;
-        emit MisdemeanorThresholdChanged(0, misdemeanorThreshold);
-        _slot0.felonyThreshold = felonyThreshold;
-        emit FelonyThresholdChanged(0, felonyThreshold);
-        _slot0.validatorJailEpochLength = validatorJailEpochLength;
-        emit ValidatorJailEpochLengthChanged(0, validatorJailEpochLength);
-        _slot0.undelegatePeriod = undelegatePeriod;
-        emit UndelegatePeriodChanged(0, undelegatePeriod);
-        _slot0.minValidatorStakeAmount = minValidatorStakeAmount;
-        emit MinValidatorStakeAmountChanged(0, minValidatorStakeAmount);
-        _slot0.minStakingAmount = minStakingAmount;
-        emit MinStakingAmountChanged(0, minStakingAmount);
-        _slot0.finalityRewardRatio = finalityRewardRatio;
-        emit FinalityRewardRatioChanged(0, finalityRewardRatio);
+    modifier onlyFromGovernor() {
+        if (_GOVERNANCE_ADDRESS != address(0x00)) {
+            require(_GOVERNANCE_ADDRESS == msg.sender, "only governance");
+        }
+        _;
     }
 
     function getActiveValidatorsLength() external view override returns (uint32) {
         return _slot0.activeValidatorsLength;
     }
 
-    function setActiveValidatorsLength(uint32 newValue) external override onlyFromGovernance {
+    function setActiveValidatorsLength(uint32 newValue) external override onlyFromGovernor {
         uint32 prevValue = _slot0.activeValidatorsLength;
         _slot0.activeValidatorsLength = newValue;
         emit ActiveValidatorsLengthChanged(prevValue, newValue);
@@ -77,7 +56,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.epochBlockInterval;
     }
 
-    function setEpochBlockInterval(uint32 newValue) external override onlyFromGovernance {
+    function setEpochBlockInterval(uint32 newValue) external override onlyFromGovernor {
         uint32 prevValue = _slot0.epochBlockInterval;
         _slot0.epochBlockInterval = newValue;
         emit EpochBlockIntervalChanged(prevValue, newValue);
@@ -87,7 +66,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.misdemeanorThreshold;
     }
 
-    function setMisdemeanorThreshold(uint32 newValue) external override onlyFromGovernance {
+    function setMisdemeanorThreshold(uint32 newValue) external override onlyFromGovernor {
         uint32 prevValue = _slot0.misdemeanorThreshold;
         _slot0.misdemeanorThreshold = newValue;
         emit MisdemeanorThresholdChanged(prevValue, newValue);
@@ -97,7 +76,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.felonyThreshold;
     }
 
-    function setFelonyThreshold(uint32 newValue) external override onlyFromGovernance {
+    function setFelonyThreshold(uint32 newValue) external override onlyFromGovernor {
         uint32 prevValue = _slot0.felonyThreshold;
         _slot0.felonyThreshold = newValue;
         emit FelonyThresholdChanged(prevValue, newValue);
@@ -107,7 +86,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.validatorJailEpochLength;
     }
 
-    function setValidatorJailEpochLength(uint32 newValue) external override onlyFromGovernance {
+    function setValidatorJailEpochLength(uint32 newValue) external override onlyFromGovernor {
         uint32 prevValue = _slot0.validatorJailEpochLength;
         _slot0.validatorJailEpochLength = newValue;
         emit ValidatorJailEpochLengthChanged(prevValue, newValue);
@@ -117,7 +96,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.undelegatePeriod;
     }
 
-    function setUndelegatePeriod(uint32 newValue) external override onlyFromGovernance {
+    function setUndelegatePeriod(uint32 newValue) external override onlyFromGovernor {
         uint32 prevValue = _slot0.undelegatePeriod;
         _slot0.undelegatePeriod = newValue;
         emit UndelegatePeriodChanged(prevValue, newValue);
@@ -127,7 +106,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.minValidatorStakeAmount;
     }
 
-    function setMinValidatorStakeAmount(uint256 newValue) external override onlyFromGovernance {
+    function setMinValidatorStakeAmount(uint256 newValue) external override onlyFromGovernor {
         uint256 prevValue = _slot0.minValidatorStakeAmount;
         _slot0.minValidatorStakeAmount = newValue;
         emit MinValidatorStakeAmountChanged(prevValue, newValue);
@@ -137,7 +116,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.minStakingAmount;
     }
 
-    function setMinStakingAmount(uint256 newValue) external override onlyFromGovernance {
+    function setMinStakingAmount(uint256 newValue) external override onlyFromGovernor {
         uint256 prevValue = _slot0.minStakingAmount;
         _slot0.minStakingAmount = newValue;
         emit MinStakingAmountChanged(prevValue, newValue);
@@ -147,7 +126,7 @@ contract StakingConfig is InjectorContextHolder, IStakingConfig {
         return _slot0.finalityRewardRatio;
     }
 
-    function setFinalityRewardRatio(uint16 newValue) external override onlyFromGovernance {
+    function setFinalityRewardRatio(uint16 newValue) external override onlyFromGovernor {
         uint16 prevValue = _slot0.finalityRewardRatio;
         _slot0.finalityRewardRatio = newValue;
         emit FinalityRewardRatioChanged(prevValue, newValue);

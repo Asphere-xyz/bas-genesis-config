@@ -119,9 +119,9 @@ const newContractUsingTypes = async (owner, params, types = {}) => {
   const newRuntimeProxy = async (contractType, initializerInput) => {
     const contractBytecode = contractType.bytecode + injectorArgs.substr(2)
     const json = contractType.toJSON(),
-      [{inputs}] = json.abi.filter(({name}) => name === 'initialize')
-    if (!inputs) throw new Error(`Can't resolve "initialize" function in the smart contract ${contractType.name}`)
-    return await RuntimeProxy.new(runtimeUpgradeAddress, contractBytecode, encodeInitializer(inputs.map(({type}) => type), initializerInput), {from: owner});
+      [method] = json.abi.filter(({name}) => name === 'initialize')
+    if (!method || !method.inputs) throw new Error(`Can't resolve "initialize" function in the smart contract ${json.contractName}`)
+    return await RuntimeProxy.new(runtimeUpgradeAddress, contractBytecode, encodeInitializer(method.inputs.map(({type}) => type), initializerInput), {from: owner});
   }
   // factory system contracts
   const staking = await newRuntimeProxy(Staking, [genesisValidators, genesisValidators.map(() => '0x'), genesisValidators, genesisValidators.map(() => '0'), '0']);

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "../InjectorContextHolder.sol";
+import "./interfaces/IStakingConfig.sol";
+import "./interfaces/IStaking.sol";
+import "./interfaces/IStakingPool.sol";
 
-import "./Staking.sol";
-
-contract StakingPool is InjectorContextHolder, IStakingPool {
+contract AbstractStakingPool is IStakingPool {
 
     event Stake(address indexed validator, address indexed staker, uint256 amount);
     event Unstake(address indexed validator, address indexed staker, uint256 amount);
@@ -25,6 +25,9 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         uint64 epoch;
     }
 
+    IStakingConfig internal immutable _STAKING_CONFIG;
+    IStaking internal immutable _STAKING;
+
     // validator pools (validator => pool)
     mapping(address => ValidatorPool) internal _validatorPools;
     // pending undelegates (validator => staker => pending unstake)
@@ -32,10 +35,9 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
     // allocated shares (validator => staker => shares)
     mapping(address => mapping(address => uint256)) _stakerShares;
 
-    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
-    }
-
-    function initialize() external initializer {
+    constructor(IStakingConfig stakingConfig, IStaking staking) {
+        _STAKING_CONFIG = stakingConfig;
+        _STAKING = staking;
     }
 
     function getStakedAmount(address validator, address staker) external view returns (uint256) {
@@ -72,7 +74,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
             _validatorPools[validator] = validatorPool;
             // if we have something to redelegate then do this right now
             if (amountToStake > 0) {
-                _STAKING_CONTRACT.redelegateDelegatorFee(validatorPool.validatorAddress);
+                _STAKING.redelegateDelegatorFee(validatorPool.validatorAddress);
             }
         }
         _;
@@ -85,7 +87,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
     }
 
     function _calcUnclaimedDelegatorFee(ValidatorPool memory validatorPool) internal view returns (uint256 amountToStake, uint256 dustRewards) {
-        return _STAKING_CONTRACT.calcAvailableForRedelegateAmount(validatorPool.validatorAddress, address(this));
+        return _STAKING.calcAvailableForRedelegateAmount(validatorPool.validatorAddress, address(this));
     }
 
     function _calcRatio(ValidatorPool memory validatorPool) internal view returns (uint256) {
@@ -99,7 +101,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
     }
 
     function _currentEpoch() internal view returns (uint64) {
-        return uint64(block.number / _STAKING_CONFIG_CONTRACT.getEpochBlockInterval());
+        return uint64(block.number / _STAKING_CONFIG.getEpochBlockInterval());
     }
 
     function _nextEpoch() internal view returns (uint64) {
@@ -117,7 +119,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         // save validator pool
         _validatorPools[validator] = validatorPool;
         // delegate these tokens to the staking contract
-        _STAKING_CONTRACT.delegate{value : msg.value}(validator);
+        _STAKING.delegate{value : msg.value}(validator);
         // emit event
         emit Stake(validator, msg.sender, msg.value);
     }
@@ -134,12 +136,12 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         _pendingUnstakes[validator][msg.sender] = PendingUnstake({
         amount : amount,
         shares : shares,
-        epoch : _nextEpoch() + _STAKING_CONFIG_CONTRACT.getUndelegatePeriod()
+        epoch : _nextEpoch() + _STAKING_CONFIG.getUndelegatePeriod()
         });
         validatorPool.pendingUnstake += amount;
         _validatorPools[validator] = validatorPool;
         // undelegate
-        _STAKING_CONTRACT.undelegate(validator, amount);
+        _STAKING.undelegate(validator, amount);
         // emit event
         emit Unstake(validator, msg.sender, amount);
     }
@@ -153,7 +155,7 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
         uint256 amount = pendingUnstake.amount;
         uint256 shares = pendingUnstake.shares;
         // claim undelegate rewards
-        _STAKING_CONTRACT.claimPendingUndelegates(validator);
+        _STAKING.claimPendingUndelegates(validator);
         // make sure user have pending unstake
         require(pendingUnstake.epoch > 0, "nothing to claim");
         require(pendingUnstake.epoch <= _currentEpoch(), "not ready");
@@ -174,6 +176,6 @@ contract StakingPool is InjectorContextHolder, IStakingPool {
     }
 
     receive() external payable {
-        require(address(msg.sender) == address(_STAKING_CONTRACT), "not a staking contract");
+        require(address(msg.sender) == address(_STAKING), "not a staking contract");
     }
 }

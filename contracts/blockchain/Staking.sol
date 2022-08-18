@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "./libs/StakingValidatorRegistry.sol";
-import "./libs/StakingRewardDistribution.sol";
+import "./interfaces/IStaking.sol";
+import "../InjectorContextHolder.sol";
+import "../staking/AbstractStaking.sol";
 
 /**
  * You might ask why this library model is so overcomplicated... the answer is that we tried
@@ -11,14 +12,17 @@ import "./libs/StakingRewardDistribution.sol";
  * Since this checks works only for deployed smart contracts (not constructors) then we can deploy several
  * smart contracts with more than 24kB size.
  */
-contract Staking is StakingStorageLayout, RetryableProxy {
+contract Staking is InjectorContextHolder, AbstractStaking {
 
-    StakingValidatorRegistry private immutable _validatorRegistryLib;
-    StakingRewardDistribution private immutable _rewardDistributionLib;
-
-    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) {
-        _validatorRegistryLib = new StakingValidatorRegistry(constructorArgs);
-        _rewardDistributionLib = new StakingRewardDistribution(constructorArgs);
+    constructor(
+        ConstructorArguments memory constructorArgs
+    )
+    InjectorContextHolder(constructorArgs)
+    AbstractStaking(_STAKING_CONFIG_CONTRACT, StakingParams(
+            address(_GOVERNANCE_CONTRACT),
+            address(_SLASHING_INDICATOR_CONTRACT),
+            address(_SYSTEM_REWARD_CONTRACT)
+        )) {
     }
 
     function initialize(
@@ -37,11 +41,8 @@ contract Staking is StakingStorageLayout, RetryableProxy {
         require(address(this).balance == totalStakes);
     }
 
-    function _fallback() internal virtual override {
-        // try both of addresses
-        _delegate(address(_validatorRegistryLib));
-        _delegate(address(_rewardDistributionLib));
-        // revert if not found
-        revert MethodNotFound();
+    function deposit() external payable onlyFromCoinbase {
+        // for backward compatibility with parlia consensus engine
+        _STAKING_CONTRACT.distributeRewards(msg.sender, msg.value);
     }
 }
