@@ -29,10 +29,6 @@ contract TestRelayHub is RelayHub {
         _;
     }
 
-    modifier onlyFromSlashingIndicator() override {
-        _;
-    }
-
     modifier onlyFromGovernance() override {
         _;
     }

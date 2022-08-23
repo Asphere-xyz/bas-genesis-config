@@ -4,19 +4,69 @@ pragma solidity ^0.8.0;
 import "../../InjectorContextHolder.sol";
 import "../../staking/AbstractStaking.sol";
 
-contract StakingUnsafe is InjectorContextHolder, AbstractStaking {
+contract StakingValidatorRegistryWithInjectorUnsafe is InjectorContextHolder, StakingValidatorRegistry {
 
-    address internal constant ZERO_ADDRESS = 0x0000000000000000000000000000000000000000;
+    constructor(
+        ConstructorArguments memory constructorArgs,
+        StakingParams memory stakingParams
+    ) InjectorContextHolder(constructorArgs) StakingValidatorRegistry(constructorArgs.chainConfigContract, stakingParams) {
+    }
+
+    modifier onlyFromCoinbase() override {
+        _;
+    }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
+    }
+}
+
+contract StakingRewardDistributionWithInjectorUnsafe is InjectorContextHolder, StakingRewardDistribution {
+
+    constructor(
+        ConstructorArguments memory constructorArgs,
+        StakingParams memory stakingParams
+    ) InjectorContextHolder(constructorArgs) StakingRewardDistribution(constructorArgs.chainConfigContract, stakingParams) {
+    }
+
+    modifier onlyFromCoinbase() override {
+        _;
+    }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
+    }
+}
+
+/**
+ * You might ask why this library model is so overcomplicated... the answer is that we tried
+ * to keep backward compatibility with existing storage layout when smart contract size become more than 24kB.
+ *
+ * Since this checks works only for deployed smart contracts (not constructors) then we can deploy several
+ * smart contracts with more than 24kB size.
+ */
+contract StakingUnsafe is InjectorContextHolder, AbstractStaking {
 
     constructor(
         ConstructorArguments memory constructorArgs
     )
     InjectorContextHolder(constructorArgs)
-    AbstractStaking(_STAKING_CONFIG_CONTRACT, StakingParams(
-            address(ZERO_ADDRESS),
-            address(ZERO_ADDRESS),
-            address(ZERO_ADDRESS)
-        )) {
+    AbstractStaking(constructorArgs.chainConfigContract, StakingParams(
+            address(0x0000000000000000000000000000000000000000),
+            address(0x0000000000000000000000000000000000000000),
+            address(0x0000000000000000000000000000000000000000)
+        ),
+        new StakingValidatorRegistryWithInjectorUnsafe(constructorArgs, StakingParams(address(0x0000000000000000000000000000000000000000), address(0x0000000000000000000000000000000000000000), address(0x0000000000000000000000000000000000000000))),
+        new StakingRewardDistributionWithInjectorUnsafe(constructorArgs, StakingParams(address(0x0000000000000000000000000000000000000000), address(0x0000000000000000000000000000000000000000), address(0x0000000000000000000000000000000000000000)))
+    ) {
     }
 
     function initialize(
@@ -38,5 +88,17 @@ contract StakingUnsafe is InjectorContextHolder, AbstractStaking {
     function deposit() external payable onlyFromCoinbase {
         // for backward compatibility with parlia consensus engine
         _STAKING_CONTRACT.distributeRewards(msg.sender, msg.value);
+    }
+
+    modifier onlyFromCoinbase() override {
+        _;
+    }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
     }
 }

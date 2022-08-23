@@ -40,10 +40,6 @@ contract TestCrossChainBridge is CrossChainBridge {
         _;
     }
 
-    modifier onlyFromSlashingIndicator() override {
-        _;
-    }
-
     modifier onlyFromGovernance() override {
         _;
     }

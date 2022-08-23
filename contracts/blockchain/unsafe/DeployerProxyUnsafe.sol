@@ -12,10 +12,6 @@ contract DeployerProxyUnsafe is DeployerProxy {
         _;
     }
 
-    modifier onlyFromSlashingIndicator() override {
-        _;
-    }
-
     modifier onlyFromGovernance() override {
         _;
     }

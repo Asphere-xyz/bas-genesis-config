@@ -7,7 +7,7 @@ import "../staking/AbstractStakingPool.sol";
 
 contract StakingPool is InjectorContextHolder, AbstractStakingPool {
 
-    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) AbstractStakingPool(_STAKING_CONFIG_CONTRACT, _STAKING_CONTRACT) {
+    constructor(ConstructorArguments memory constructorArgs) InjectorContextHolder(constructorArgs) AbstractStakingPool(constructorArgs.chainConfigContract, constructorArgs.stakingContract) {
     }
 
     function initialize() external initializer {

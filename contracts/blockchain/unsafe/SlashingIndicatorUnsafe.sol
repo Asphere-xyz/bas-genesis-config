@@ -12,10 +12,6 @@ contract SlashingIndicatorUnsafe is SlashingIndicator {
         _;
     }
 
-    modifier onlyFromSlashingIndicator() override {
-        _;
-    }
-
     modifier onlyFromGovernance() override {
         _;
     }

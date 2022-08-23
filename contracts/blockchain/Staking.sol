@@ -5,6 +5,24 @@ import "./interfaces/IStaking.sol";
 import "../InjectorContextHolder.sol";
 import "../staking/AbstractStaking.sol";
 
+contract StakingValidatorRegistryWithInjector is InjectorContextHolder, StakingValidatorRegistry {
+
+    constructor(
+        ConstructorArguments memory constructorArgs,
+        StakingParams memory stakingParams
+    ) InjectorContextHolder(constructorArgs) StakingValidatorRegistry(_STAKING_CONFIG_CONTRACT, stakingParams) {
+    }
+}
+
+contract StakingRewardDistributionWithInjector is InjectorContextHolder, StakingRewardDistribution {
+
+    constructor(
+        ConstructorArguments memory constructorArgs,
+        StakingParams memory stakingParams
+    ) InjectorContextHolder(constructorArgs) StakingRewardDistribution(_STAKING_CONFIG_CONTRACT, stakingParams) {
+    }
+}
+
 /**
  * You might ask why this library model is so overcomplicated... the answer is that we tried
  * to keep backward compatibility with existing storage layout when smart contract size become more than 24kB.
@@ -18,11 +36,14 @@ contract Staking is InjectorContextHolder, AbstractStaking {
         ConstructorArguments memory constructorArgs
     )
     InjectorContextHolder(constructorArgs)
-    AbstractStaking(_STAKING_CONFIG_CONTRACT, StakingParams(
-            address(_GOVERNANCE_CONTRACT),
-            address(_SLASHING_INDICATOR_CONTRACT),
-            address(_SYSTEM_REWARD_CONTRACT)
-        )) {
+    AbstractStaking(constructorArgs.chainConfigContract, StakingParams(
+            address(constructorArgs.governanceContract),
+            address(constructorArgs.slashingIndicatorContract),
+            address(constructorArgs.systemRewardContract)
+        ),
+        new StakingValidatorRegistryWithInjector(constructorArgs, StakingParams(address(constructorArgs.governanceContract), address(constructorArgs.slashingIndicatorContract), address(constructorArgs.systemRewardContract))),
+        new StakingRewardDistributionWithInjector(constructorArgs, StakingParams(address(constructorArgs.governanceContract), address(constructorArgs.slashingIndicatorContract), address(constructorArgs.systemRewardContract)))
+    ) {
     }
 
     function initialize(

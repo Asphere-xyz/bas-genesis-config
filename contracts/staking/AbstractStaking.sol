@@ -15,12 +15,17 @@ import "../common/RetryableProxy.sol";
  */
 abstract contract AbstractStaking is StakingStorageLayout, RetryableProxy {
 
-    StakingValidatorRegistry private immutable _validatorRegistryLib;
-    StakingRewardDistribution private immutable _rewardDistributionLib;
+    StakingValidatorRegistry internal immutable _validatorRegistryLib;
+    StakingRewardDistribution internal immutable _rewardDistributionLib;
 
-    constructor(IStakingConfig stakingConfig, StakingParams memory stakingParams) StakingStorageLayout(stakingConfig, stakingParams) {
-        _validatorRegistryLib = new StakingValidatorRegistry(stakingConfig, stakingParams);
-        _rewardDistributionLib = new StakingRewardDistribution(stakingConfig, stakingParams);
+    constructor(
+        IStakingConfig stakingConfig,
+        StakingParams memory stakingParams,
+        StakingValidatorRegistry validatorRegistry,
+        StakingRewardDistribution rewardDistribution
+    ) StakingStorageLayout(stakingConfig, stakingParams) {
+        _validatorRegistryLib = validatorRegistry;
+        _rewardDistributionLib = rewardDistribution;
     }
 
     function _fallback() internal virtual override {
@@ -29,5 +34,15 @@ abstract contract AbstractStaking is StakingStorageLayout, RetryableProxy {
         _delegate(address(_rewardDistributionLib));
         // revert if not found
         revert MethodNotFound();
+    }
+}
+
+contract SimpleStaking is AbstractStaking {
+
+    constructor(IStakingConfig stakingConfig, StakingParams memory stakingParams)
+    AbstractStaking(stakingConfig, stakingParams,
+        new StakingValidatorRegistry(stakingConfig, stakingParams),
+        new StakingRewardDistribution(stakingConfig, stakingParams)
+    ) {
     }
 }

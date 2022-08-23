@@ -261,6 +261,7 @@ contract StakingValidatorRegistry is StakingStorageLayout, RetryMixin, IStakingV
     }
 
     function distributeRewards(address validatorAddress, uint256 amount) external payable override {
+        require(amount == msg.value, "bad value");
         // make sure validator is active
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.status != ValidatorStatus.NotFound, "not found");

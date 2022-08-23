@@ -59,7 +59,6 @@ abstract contract InjectorContextHolder is Initializable, Multicall {
     }
 
     error OnlyCoinbase(address coinbase);
-    error OnlySlashingIndicator();
     error OnlyGovernance();
     error OnlyBlock(uint64 blockNumber);
 
@@ -96,11 +95,6 @@ abstract contract InjectorContextHolder is Initializable, Multicall {
 
     modifier onlyFromCoinbase() virtual {
         if (msg.sender != block.coinbase) revert OnlyCoinbase(block.coinbase);
-        _;
-    }
-
-    modifier onlyFromSlashingIndicator() virtual {
-        if (ISlashingIndicator(msg.sender) != _SLASHING_INDICATOR_CONTRACT) revert OnlySlashingIndicator();
         _;
     }
 

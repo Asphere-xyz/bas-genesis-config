@@ -170,13 +170,13 @@ contract("Staking", async (accounts) => {
   it("validator can claim both staking and commission rewards", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
     // create validator with 30% fee and 1 ether self stake
-    await parlia.registerValidator(validator1, '0x', '3000', {from: validator1, value: '1000000000000000000'});
+    await parlia.registerValidator(validator1, '0x', '3000', '1000000000000000000', {from: validator1, value: '1000000000000000000'});
     await parlia.activateValidator(validator1);
     await waitForNextEpoch(parlia);
     // deposit 2 ether fee in different epochs
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'});
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'});
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
     // check rewards
     let validatorStakingFee = await parlia.getDelegatorFee(validator1, validator1)
@@ -190,7 +190,7 @@ contract("Staking", async (accounts) => {
   it("staker rewards with multiple delegations", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
     // create validator with 10% fee and 2 ether self stake
-    await parlia.registerValidator(validator1, '0x', '1000', {from: validator1, value: '2000000000000000000'});
+    await parlia.registerValidator(validator1, '0x', '1000', '2000000000000000000', {from: validator1, value: '2000000000000000000'});
     await parlia.activateValidator(validator1);
     await waitForNextEpoch(parlia);
     // do first delegation
@@ -199,9 +199,9 @@ contract("Staking", async (accounts) => {
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
     // deposit some money
-    await parlia.deposit(validator1, {from: validator1, value: '500000000000000000'});
+    await parlia.distributeRewards(validator1, '500000000000000000', {from: validator1, value: '500000000000000000'});
     await waitForNextEpoch(parlia);
-    await parlia.deposit(validator1, {from: validator1, value: '500000000000000000'});
+    await parlia.distributeRewards(validator1, '500000000000000000', {from: validator1, value: '500000000000000000'});
     await waitForNextEpoch(parlia);
     // so, 2 eth is validator's share, 1 eth is staker share, plus validator gets 10% of fees then
     // + validator commission is 1 eth * 10% = 0.1 eth
@@ -217,7 +217,7 @@ contract("Staking", async (accounts) => {
     await parlia.addValidator(validator1, '0x');
     await parlia.changeValidatorCommissionRate(validator1, '1000', {from: validator1}); // 10%
     await waitForNextEpoch(parlia);
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'}); // 1 ether
     await waitForNextEpoch(parlia);
     // check rewards
     await claimValidatorFeeAndCheck(parlia, validator1, '1000000000000000000')
@@ -225,13 +225,13 @@ contract("Staking", async (accounts) => {
   it("only committed epoch is claimable", async () => {
     const {parlia} = await newMockContract(owner, {epochBlockInterval: '50',})
     // create validator with 10% fee and 2 ether self stake
-    await parlia.registerValidator(validator1, '0x', '1000', {from: validator1, value: '2000000000000000000'});
+    await parlia.registerValidator(validator1, '0x', '1000', '2000000000000000000', {from: validator1, value: '2000000000000000000'});
     await parlia.activateValidator(validator1);
     await waitForNextEpoch(parlia);
     // deposit 1 ether and close one epoch, another deposit keep pending
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'}); // 1 ether
     await waitForNextEpoch(parlia);
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'}); // 1 ether
     // check rewards
     await claimValidatorFeeAndCheck(parlia, validator1, '100000000000000000')
     await claimDelegatorFeeAndCheck(parlia, validator1, validator1, '900000000000000000')
@@ -245,17 +245,17 @@ contract("Staking", async (accounts) => {
     // wait for the next epoch to apply fee scheme
     await waitForNextEpoch(parlia);
     // check constraints
-    await expectError(parlia.deposit(validator1, {from: validator1, value: '0'}));
-    await expectError(parlia.deposit(validator4, {
+    // await expectError(parlia.distributeRewards(validator1, '0', {from: validator1, value: '0'}));
+    await expectError(parlia.distributeRewards(validator4, '1000000000000000000', {
       from: validator1,
       value: '1000000000000000000'
     }), 'not found');
     // validator get fees (1.1111 ether)
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1 ether
-    await parlia.deposit(validator1, {from: validator1, value: '100000000000000000'}); // 0.1 ether
-    await parlia.deposit(validator1, {from: validator1, value: '10000000000000000'}); // 0.01 ether
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000'}); // 0.001 ether
-    await parlia.deposit(validator1, {from: validator1, value: '100000000000000'}); // 0.0001 ether
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'}); // 1 ether
+    await parlia.distributeRewards(validator1, '100000000000000000', {from: validator1, value: '100000000000000000'}); // 0.1 ether
+    await parlia.distributeRewards(validator1, '10000000000000000', {from: validator1, value: '10000000000000000'}); // 0.01 ether
+    await parlia.distributeRewards(validator1, '1000000000000000', {from: validator1, value: '1000000000000000'}); // 0.001 ether
+    await parlia.distributeRewards(validator1, '100000000000000', {from: validator1, value: '100000000000000'}); // 0.0001 ether
     // wait before end of the epoch
     await waitForNextEpoch(parlia);
     // check rewards
@@ -300,7 +300,7 @@ contract("Staking", async (accounts) => {
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
     // slash 5 times
     for (let i = 0; i < 5; i++) {
-      await parlia.slash(validator2, {from: validator1});
+      await parlia.slashValidator(validator2, {from: validator1});
     }
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
@@ -346,12 +346,12 @@ contract("Staking", async (accounts) => {
     await waitForNextEpoch(parlia);
     // slash for 19 times
     for (let i = 0; i < 19; i++) {
-      await parlia.slash(validator2, {from: validator1});
+      await parlia.slashValidator(validator2, {from: validator1});
     }
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '1');
     // slash one more time (20 total >= than felony threshold)
-    await parlia.slash(validator2, {from: validator1});
+    await parlia.slashValidator(validator2, {from: validator1});
     // status should change
     assert.equal((await parlia.getValidatorStatus(validator1)).status.toString(), '1');
     assert.equal((await parlia.getValidatorStatus(validator2)).status.toString(), '3');
@@ -374,7 +374,7 @@ contract("Staking", async (accounts) => {
     await waitForNextEpoch(parlia)
     // slash for 5 times
     for (let i = 0; i < 5; i++) {
-      await parlia.slash(validator2, {from: validator1});
+      await parlia.slashValidator(validator2, {from: validator1});
     }
     // now validator 2 is in jail
     let status2 = await parlia.getValidatorStatus(validator2)
@@ -397,7 +397,7 @@ contract("Staking", async (accounts) => {
       epochBlockInterval: '50', // 50 blocks
       undelegatePeriod: '0', // let claim in the next epoch
     })
-    await parlia.registerValidator(validator1, '0x', '1000', {from: validator1, value: '10000000000000000000'}); // 10
+    await parlia.registerValidator(validator1, '0x', '1000', '10000000000000000000', {from: validator1, value: '10000000000000000000'}); // 10
     await waitForNextEpoch(parlia);
     let validatorStatus = await parlia.getValidatorStatus(validator1);
     assert.equal(validatorStatus.totalDelegated, '10000000000000000000');
@@ -431,12 +431,12 @@ contract("Staking", async (accounts) => {
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
     // deposit and claim it 1 ether
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'});
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
     await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '1000000000000000000');
     await waitForNextEpoch(parlia);
     // deposit 1 more ether and claim it
-    await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'});
+    await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
     // await debug(parlia.claimDelegatorFee(validator1, {from: staker1}))
     await claimDelegatorFeeAndCheck(parlia, validator1, staker1, '1000000000000000000', true);
@@ -450,7 +450,7 @@ contract("Staking", async (accounts) => {
     const costOfClaims = [1, 10]
     for (const blocks of costOfClaims) {
       for (let i = 0; i < blocks; i++) {
-        await parlia.deposit(validator1, {from: validator1, value: '1000000000000000000'}); // 1.0
+        await parlia.distributeRewards(validator1, '1000000000000000000', {from: validator1, value: '1000000000000000000'}); // 1.0
       }
       const result = await parlia.claimDelegatorFee(validator1, {from: staker1})
       console.log(` + ${blocks} blocks, amount=${new BigNumber(result.logs[0].args.amount).dividedBy(1e18).toString(10)}, gas=${result.receipt.gasUsed}`);
@@ -470,7 +470,7 @@ contract("Staking", async (accounts) => {
     ].sort())
     await waitForNextEpoch(parlia)
     for (let i = 0; i < 10; i++) {
-      await parlia.slash(validator1);
+      await parlia.slashValidator(validator1);
     }
     assert.deepEqual(Array.from(await parlia.getValidators()).sort(), [
       validator2,
@@ -491,7 +491,7 @@ contract("Staking", async (accounts) => {
     // delegate 1 ether and distribute 1 ether as rewards (100% APY) with some dust
     await parlia.delegate(validator1, {from: staker1, value: '1000000000000000000'});
     await waitForNextEpoch(parlia);
-    await parlia.deposit(validator1, {value: '1000000000000000123'});
+    await parlia.distributeRewards(validator1, '1000000000000000123', {value: '1000000000000000123'});
     await waitForNextEpoch(parlia);
     // now user should have 1 ether claimable as rewards
     let claimableRewards = await parlia.getDelegatorFee(validator1, staker1);
@@ -528,7 +528,7 @@ contract("Staking", async (accounts) => {
     await waitForNextEpoch(parlia)
     // slash for 5 times
     for (let i = 0; i < 5; i++) {
-      await parlia.slash(validator2, {from: validator1});
+      await parlia.slashValidator(validator2, {from: validator1});
     }
     // now validator 2 is in jail
     let status2 = await parlia.getValidatorStatus(validator2)

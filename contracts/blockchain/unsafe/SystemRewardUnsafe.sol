@@ -12,10 +12,6 @@ contract SystemRewardUnsafe is SystemReward {
         _;
     }
 
-    modifier onlyFromSlashingIndicator() override {
-        _;
-    }
-
     modifier onlyFromGovernance() override {
         _;
     }

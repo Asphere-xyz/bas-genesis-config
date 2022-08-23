@@ -38,7 +38,7 @@ contract("StakingPool", async (accounts) => {
     await stakingPool.stake(validator1, {from: staker1, value: '50000000000000000000'}); // 50.0
     assert.equal((await stakingPool.getStakedAmount(validator1, staker1)).toString(), '50000000000000000000');
     await waitForNextEpoch(parlia);
-    await parlia.deposit(validator1, {value: '1010000000000000000'}); // 10.1
+    await parlia.distributeRewards(validator1, '1010000000000000000', {value: '1010000000000000000'}); // 10.1
     await waitForNextEpoch(parlia);
     // console.log(`Validator Pool: ${JSON.stringify(await stakingPool.getValidatorPool(validator1), null, 2)}`)
     // console.log(`Ratio: ${(await stakingPool.getRatio(validator1)).toString()}`)

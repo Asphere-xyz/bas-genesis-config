@@ -7,4 +7,16 @@ contract StakingPoolUnsafe is StakingPool {
 
     constructor(ConstructorArguments memory constructorArgs) StakingPool(constructorArgs) {
     }
+
+    modifier onlyFromCoinbase() override {
+        _;
+    }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
+    }
 }

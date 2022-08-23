@@ -38,4 +38,16 @@ contract StakingConfigUnsafe is InjectorContextHolder, AbstractStakingConfig {
         _slot0.finalityRewardRatio = finalityRewardRatio;
         emit FinalityRewardRatioChanged(0, finalityRewardRatio);
     }
+
+    modifier onlyFromCoinbase() override {
+        _;
+    }
+
+    modifier onlyFromGovernance() override {
+        _;
+    }
+
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
+    }
 }

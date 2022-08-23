@@ -12,10 +12,6 @@ contract RuntimeUpgradeUnsafe is RuntimeUpgrade {
         _;
     }
 
-    modifier onlyFromSlashingIndicator() override {
-        _;
-    }
-
     modifier onlyFromGovernance() override {
         _;
     }
