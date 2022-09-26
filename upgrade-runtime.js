@@ -83,7 +83,7 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
       chainId = await web3.eth.getChainId()
     const txOpts = {
       from: account.address,
-      gas: 2_000_000,
+      gas: 8_000_000,
       gasPrice: 5e9,
       nonce: nonce,
       to: to,
