@@ -83,7 +83,7 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
       chainId = await web3.eth.getChainId()
     const txOpts = {
       from: account.address,
-      gas: 8_000_000,
+      gas: 7_000_000,
       gasPrice: 5e9,
       nonce: nonce,
       to: to,
@@ -141,6 +141,7 @@ const proposalStates = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded'
   if (!someValidator) {
     throw new Error(`There is no validators in the network, its not possible`)
   }
+  console.log(`Chosen validator: ${someValidator.address}`)
   const upgradeSystemContractByteCode = async (contractAddress, defaultByteCode = []) => {
     if (!Array.isArray(contractAddress)) {
       contractAddress = [contractAddress]
