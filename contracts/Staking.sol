@@ -313,23 +313,25 @@ contract Staking is IStaking, InjectorContextHolder {
     }
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
-        // check minimum delegate amount
-        require(amount >= _chainConfigContract.getMinStakingAmount() && amount != 0, "Staking: amount is too low");
+        // check amount has a correct precision
         require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
         uint64 beforeEpoch = _nextEpoch();
         // Lets upgrade next snapshot parameters:
         // + find snapshot for the next epoch after current block
-        // + increase total delegated amount in the next epoch for this validator
+        // + decrease total delegated amount in the next epoch for this validator
         // + re-save validator because last affected epoch might change
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, beforeEpoch);
         require(validatorSnapshot.totalDelegated >= uint112(amount / BALANCE_COMPACT_PRECISION), "Staking: insufficient balance");
+        require(validatorSnapshot.totalDelegated - uint112(amount / BALANCE_COMPACT_PRECISION) >=
+            uint112(_chainConfigContract.getMinStakingAmount() / BALANCE_COMPACT_PRECISION),
+            "Staking: remainder is too low");
         validatorSnapshot.totalDelegated -= uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[fromValidator] = validator;
-        // if last pending delegate has the same next epoch then its safe to just increase total
+        // if last pending delegate has the same next epoch then its safe to just decrease total
         // staked amount because it can't affect current validator set, but otherwise we must create
-        // new record in delegation queue with the last epoch (delegations are ordered by epoch)
+        // new record in undelegation queue with the last epoch (delegations are ordered by epoch)
         ValidatorDelegation storage delegation = _validatorDelegations[fromValidator][toDelegator];
         require(delegation.delegateQueue.length > 0, "Staking: delegation queue is empty");
         DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
