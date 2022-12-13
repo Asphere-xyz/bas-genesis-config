@@ -338,28 +338,33 @@ contract Staking is InjectorContextHolder, IStaking {
     }
 
     function _undelegateFrom(address toDelegator, address fromValidator, uint256 amount) internal {
-        // check minimum delegate amount
-        require(amount >= _CHAIN_CONFIG_CONTRACT.getMinStakingAmount() && amount != 0, "too low");
-        require(amount % BALANCE_COMPACT_PRECISION == 0, "no remainder");
+        // check amount is not zero and has a correct precision
+        require(amount != 0, "zero unstake amount");
+        require(amount % BALANCE_COMPACT_PRECISION == 0, "Staking: amount have a remainder");
         // make sure validator exists at least
         Validator memory validator = _validatorsMap[fromValidator];
         uint64 beforeEpoch = nextEpoch();
         // Lets upgrade next snapshot parameters:
         // + find snapshot for the next epoch after current block
-        // + increase total delegated amount in the next epoch for this validator
+        // + decrease total delegated amount in the next epoch for this validator
         // + re-save validator because last affected epoch might change
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, beforeEpoch);
         require(validatorSnapshot.totalDelegated >= uint112(amount / BALANCE_COMPACT_PRECISION), "insufficient balance");
+        require(validatorSnapshot.totalDelegated - uint112(amount / BALANCE_COMPACT_PRECISION) >=
+            uint112(_CHAIN_CONFIG_CONTRACT.getMinStakingAmount() / BALANCE_COMPACT_PRECISION),
+            "unstake remainder is too low");
         validatorSnapshot.totalDelegated -= uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[fromValidator] = validator;
-        // if last pending delegate has the same next epoch then its safe to just increase total
+        // if last pending delegate has the same next epoch then its safe to just decrease total
         // staked amount because it can't affect current validator set, but otherwise we must create
-        // new record in delegation queue with the last epoch (delegations are ordered by epoch)
+        // new record in undelegation queue with the last epoch (delegations are ordered by epoch)
         ValidatorDelegation storage delegation = _validatorDelegations[fromValidator][toDelegator];
         require(delegation.delegateQueue.length > 0, "insufficient balance");
         DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
         require(recentDelegateOp.amount >= uint112(amount / BALANCE_COMPACT_PRECISION), "insufficient balance");
         uint112 nextDelegatedAmount = recentDelegateOp.amount - uint112(amount / BALANCE_COMPACT_PRECISION);
+        require(nextDelegatedAmount >= uint112(_CHAIN_CONFIG_CONTRACT.getMinStakingAmount() / BALANCE_COMPACT_PRECISION),
+            "unstake remainder is too low");
         if (recentDelegateOp.epoch >= beforeEpoch) {
             // decrease total delegated amount for the next epoch
             recentDelegateOp.amount = nextDelegatedAmount;
