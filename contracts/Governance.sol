@@ -1,21 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/governance/extensions/GovernorSettings.sol";
-import "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
-import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
+import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorSettingsUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/governance/extensions/GovernorCountingSimpleUpgradeable.sol";
 
-import "./Injector.sol";
+import "./InjectorContextHolder.sol";
 
-contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSettings, IGovernance {
+contract Governance is InjectorContextHolder, GovernorCountingSimpleUpgradeable, GovernorSettingsUpgradeable, IGovernance {
 
     uint256 internal _instantVotingPeriod;
 
-    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) Governor("Governance") GovernorSettings(0, 1, 0) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) InjectorContextHolder(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function ctor(uint256 newVotingPeriod) external whenNotInitialized {
-        _setVotingPeriod(newVotingPeriod);
+    function initialize(uint256 newVotingPeriod, string memory name) external initializer {
+        __GovernorCountingSimple_init();
+        __Governor_init(name);
+        __GovernorSettings_init(0, newVotingPeriod, 0);
     }
 
     function getVotingSupply() external view returns (uint256) {
@@ -45,51 +64,51 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
         bytes[] memory calldatas,
         string memory description
     ) public virtual override onlyValidatorOwner(msg.sender) returns (uint256) {
-        return Governor.propose(targets, values, calldatas, description);
+        return GovernorUpgradeable.propose(targets, values, calldatas, description);
     }
 
     modifier onlyValidatorOwner(address account) {
-        address validatorAddress = _stakingContract.getValidatorByOwner(account);
-        require(_stakingContract.isValidatorActive(validatorAddress), "Governance: only validator owner");
+        address validatorAddress = _STAKING_CONTRACT.getValidatorByOwner(account);
+        require(_STAKING_CONTRACT.isValidatorActive(validatorAddress), "only validator owner");
         _;
     }
 
-    function votingPeriod() public view override(IGovernor, GovernorSettings) returns (uint256) {
+    function votingPeriod() public view override(IGovernorUpgradeable, GovernorSettingsUpgradeable) returns (uint256) {
         // let use re-defined voting period for the proposals
         if (_instantVotingPeriod != 0) {
             return _instantVotingPeriod;
         }
-        return GovernorSettings.votingPeriod();
+        return GovernorSettingsUpgradeable.votingPeriod();
     }
 
     function _getVotes(address account, uint256 blockNumber, bytes memory /*params*/) internal view virtual override returns (uint256) {
         return _validatorOwnerVotingPowerAt(account, blockNumber);
     }
 
-    function _countVote(uint256 proposalId, address account, uint8 support, uint256 weight, bytes memory params) internal virtual override(Governor, GovernorCountingSimple) {
-        address validatorAddress = _stakingContract.getValidatorByOwner(account);
+    function _countVote(uint256 proposalId, address account, uint8 support, uint256 weight, bytes memory params) internal virtual override(GovernorUpgradeable, GovernorCountingSimpleUpgradeable) {
+        address validatorAddress = _STAKING_CONTRACT.getValidatorByOwner(account);
         return super._countVote(proposalId, validatorAddress, support, weight, params);
     }
 
     function _validatorOwnerVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
-        address validator = _stakingContract.getValidatorByOwner(validatorOwner);
-        // only active validators power makes sense
-        if (!_stakingContract.isValidatorActive(validator)) {
-            return 0;
-        }
+        address validator = _STAKING_CONTRACT.getValidatorByOwner(validatorOwner);
         return _validatorVotingPowerAt(validator, blockNumber);
     }
 
     function _validatorVotingPowerAt(address validator, uint256 blockNumber) internal view returns (uint256) {
+        // only active validators power makes sense
+        if (!_STAKING_CONTRACT.isValidatorActive(validator)) {
+            return 0;
+        }
         // find validator votes at block number
-        uint64 epoch = uint64(blockNumber / _chainConfigContract.getEpochBlockInterval());
-        (,,uint256 totalDelegated,,,,,,) = _stakingContract.getValidatorStatusAtEpoch(validator, epoch);
+        uint64 epoch = uint64(blockNumber / _CHAIN_CONFIG_CONTRACT.getEpochBlockInterval());
+        (,,uint256 totalDelegated,,,,,,) = _STAKING_CONTRACT.getValidatorStatusAtEpoch(validator, epoch);
         // use total delegated amount is a voting power
         return totalDelegated;
     }
 
     function _votingSupply(uint256 blockNumber) internal view returns (uint256 votingSupply) {
-        address[] memory validators = _stakingContract.getValidators();
+        address[] memory validators = _STAKING_CONTRACT.getValidators();
         for (uint256 i = 0; i < validators.length; i++) {
             votingSupply += _validatorVotingPowerAt(validators[i], blockNumber);
         }
@@ -101,11 +120,11 @@ contract Governance is InjectorContextHolder, GovernorCountingSimple, GovernorSe
         return votingSupply * 2 / 3;
     }
 
-    function votingDelay() public view override(IGovernor, GovernorSettings) returns (uint256) {
-        return GovernorSettings.votingDelay();
+    function votingDelay() public view override(IGovernorUpgradeable, GovernorSettingsUpgradeable) returns (uint256) {
+        return GovernorSettingsUpgradeable.votingDelay();
     }
 
-    function proposalThreshold() public view virtual override(Governor, GovernorSettings) returns (uint256) {
-        return GovernorSettings.proposalThreshold();
+    function proposalThreshold() public view virtual override(GovernorUpgradeable, GovernorSettingsUpgradeable) returns (uint256) {
+        return GovernorSettingsUpgradeable.proposalThreshold();
     }
 }

@@ -5,30 +5,40 @@ import "../Staking.sol";
 
 contract FakeStaking is Staking {
 
-    constructor(bytes memory ctor) Staking(ctor) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) Staking(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function addValidator(address account) external override {
-        _addValidator(account, account, ValidatorStatus.Active, 0, 0, _nextEpoch());
+    modifier onlyFromCoinbase() override {
+        _;
     }
 
-    function removeValidator(address account) external override {
-        _removeValidator(account);
+    modifier onlyFromSlashingIndicator() override {
+        _;
     }
 
-    function activateValidator(address validator) external override {
-        _activateValidator(validator);
+    modifier onlyFromGovernance() override {
+        _;
     }
 
-    function disableValidator(address validator) external override {
-        _disableValidator(validator);
-    }
-
-    function deposit(address validatorAddress) external payable override {
-        _depositFee(validatorAddress);
-    }
-
-    function slash(address validatorAddress) external override {
-        _slashValidator(validatorAddress);
+    modifier onlyBlock(uint64 /*blockNumber*/) override {
+        _;
     }
 }

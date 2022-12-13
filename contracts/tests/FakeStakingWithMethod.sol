@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "../SystemReward.sol";
+import "../Staking.sol";
 
-contract FakeSystemReward is SystemReward {
+contract FakeStakingWithMethod is Staking {
 
     constructor(
         IStaking stakingContract,
@@ -14,7 +14,7 @@ contract FakeSystemReward is SystemReward {
         IChainConfig chainConfigContract,
         IRuntimeUpgrade runtimeUpgradeContract,
         IDeployerProxy deployerProxyContract
-    ) SystemReward(
+    ) Staking(
         stakingContract,
         slashingIndicatorContract,
         systemRewardContract,
@@ -24,6 +24,10 @@ contract FakeSystemReward is SystemReward {
         runtimeUpgradeContract,
         deployerProxyContract
     ) {
+    }
+
+    function thisIsMethod() external pure returns (uint256) {
+        return 0x7b;
     }
 
     modifier onlyFromCoinbase() override {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "../SystemReward.sol";
+import "../Governance.sol";
 
-contract FakeSystemReward is SystemReward {
+contract FakeGovernance is Governance {
 
     constructor(
         IStaking stakingContract,
@@ -14,7 +14,7 @@ contract FakeSystemReward is SystemReward {
         IChainConfig chainConfigContract,
         IRuntimeUpgrade runtimeUpgradeContract,
         IDeployerProxy deployerProxyContract
-    ) SystemReward(
+    ) Governance(
         stakingContract,
         slashingIndicatorContract,
         systemRewardContract,

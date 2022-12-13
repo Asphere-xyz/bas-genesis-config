@@ -1,18 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity ^0.8.0;
 
-import "./Injector.sol";
+import "./InjectorContextHolder.sol";
 
 contract SlashingIndicator is ISlashingIndicator, InjectorContextHolder {
 
-    constructor(bytes memory constructorParams) InjectorContextHolder(constructorParams) {
+    constructor(
+        IStaking stakingContract,
+        ISlashingIndicator slashingIndicatorContract,
+        ISystemReward systemRewardContract,
+        IStakingPool stakingPoolContract,
+        IGovernance governanceContract,
+        IChainConfig chainConfigContract,
+        IRuntimeUpgrade runtimeUpgradeContract,
+        IDeployerProxy deployerProxyContract
+    ) InjectorContextHolder(
+        stakingContract,
+        slashingIndicatorContract,
+        systemRewardContract,
+        stakingPoolContract,
+        governanceContract,
+        chainConfigContract,
+        runtimeUpgradeContract,
+        deployerProxyContract
+    ) {
     }
 
-    function ctor() external whenNotInitialized {
+    function initialize() external initializer {
     }
 
     function slash(address validator) external onlyFromCoinbase virtual override {
         // we need this proxy to be compatible with BSC
-        _stakingContract.slash(validator);
+        _STAKING_CONTRACT.slash(validator);
     }
 }
