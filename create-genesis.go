@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/common/systemcontract"
-	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/gorilla/mux"
 	"io/fs"
 	"io/ioutil"
+	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -17,8 +21,6 @@ import (
 	"unsafe"
 
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
-
-	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -50,12 +52,46 @@ func (d *dummyChainContext) GetHeader(common.Hash, uint64) *types.Header {
 	return nil
 }
 
-func createExtraData(validators []common.Address) []byte {
+func createFastFinalityExtraData(config genesisConfig) []byte {
+	if len(config.Validators) != len(config.VotingKeys) {
+		log.Panicf("ecdsa and bls keys doesn't match (%d != %d)", len(config.Validators), len(config.VotingKeys))
+	}
+	extra := make([]byte, 32)
+	extra = append(extra, byte(len(config.Validators)))
+	for i, v := range config.Validators {
+		extra = append(extra, v.Bytes()...)
+		if len(config.VotingKeys[i]) != 48 {
+			log.Panicf("bls key has incorrect length, must be 48, instead of %d", len(config.VotingKeys[i]))
+		}
+		extra = append(extra, config.VotingKeys[i]...)
+	}
+	extra = append(extra, bytes.Repeat([]byte{0}, 65)...)
+	return extra
+}
+
+func createExtraData(config genesisConfig) []byte {
+	if config.SupportedForks.FastFinalityBlock != nil && (*big.Int)(config.SupportedForks.FastFinalityBlock).Uint64() == 0 {
+		return createFastFinalityExtraData(config)
+	}
+	validators := config.Validators
 	extra := make([]byte, 32+20*len(validators)+65)
 	for i, v := range validators {
 		copy(extra[32+20*i:], v.Bytes())
 	}
 	return extra
+}
+
+func readStateObjectsFromState(f *state.StateDB) map[common.Address]*state.StateObject {
+	var result map[common.Address]*state.StateObject
+	rs := reflect.ValueOf(*f)
+	rf := rs.FieldByName("stateObjects")
+	rs2 := reflect.New(rs.Type()).Elem()
+	rs2.Set(rs)
+	rf = rs2.FieldByName("stateObjects")
+	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
+	ri := reflect.ValueOf(&result).Elem()
+	ri.Set(rf)
+	return result
 }
 
 func readDirtyStorageFromState(f *state.StateObject) state.Storage {
@@ -71,69 +107,6 @@ func readDirtyStorageFromState(f *state.StateObject) state.Storage {
 	return result
 }
 
-func simulateSystemContract(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, constructor []byte, balance *big.Int) error {
-	artifact := &artifactData{}
-	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
-		return err
-	}
-	bytecode := append(hexutil.MustDecode(artifact.Bytecode), constructor...)
-	// simulate constructor execution
-	ethdb := rawdb.NewDatabase(memorydb.New())
-	db := state.NewDatabaseWithConfig(ethdb, &trie.Config{})
-	statedb, err := state.New(common.Hash{}, db, nil)
-	if err != nil {
-		return err
-	}
-	statedb.SetBalance(systemContract, balance)
-	block := genesis.ToBlock(nil)
-	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
-	txContext := core.NewEVMTxContext(
-		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
-	)
-	tracer, err := tracers.New("callTracer", nil)
-	if err != nil {
-		return err
-	}
-	evm := vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{
-		Debug:  true,
-		Tracer: tracer,
-	})
-	deployedBytecode, _, err := evm.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
-	if err != nil {
-		for _, c := range deployedBytecode[64:] {
-			if c >= 32 && c <= unicode.MaxASCII {
-				print(string(c))
-			}
-		}
-		println()
-		return err
-	}
-	storage := readDirtyStorageFromState(statedb.GetOrNewStateObject(systemContract))
-	// read state changes from state database
-	genesisAccount := core.GenesisAccount{
-		Code:    deployedBytecode,
-		Storage: storage.Copy(),
-		Balance: big.NewInt(0),
-		Nonce:   0,
-	}
-	if genesis.Alloc == nil {
-		genesis.Alloc = make(core.GenesisAlloc)
-	}
-	genesis.Alloc[systemContract] = genesisAccount
-	// make sure ctor working fine (better to fail here instead of in consensus engine)
-	errorCode, _, err := evm.Call(vm.AccountRef(common.Address{}), systemContract, hexutil.MustDecode("0xe1c7392a"), 10_000_000, big.NewInt(0))
-	if err != nil {
-		for _, c := range errorCode[64:] {
-			if c >= 32 && c <= unicode.MaxASCII {
-				print(string(c))
-			}
-		}
-		println()
-		return err
-	}
-	return nil
-}
-
 var stakingAddress = common.HexToAddress("0x0000000000000000000000000000000000001000")
 var slashingIndicatorAddress = common.HexToAddress("0x0000000000000000000000000000000000001001")
 var systemRewardAddress = common.HexToAddress("0x0000000000000000000000000000000000001002")
@@ -144,14 +117,17 @@ var runtimeUpgradeAddress = common.HexToAddress("0x00000000000000000000000000000
 var deployerProxyAddress = common.HexToAddress("0x0000000000000000000000000000000000007005")
 var intermediarySystemAddress = common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe")
 
+//go:embed build/contracts/RuntimeProxy.json
+var runtimeProxyArtifact []byte
+
 //go:embed build/contracts/Staking.json
 var stakingRawArtifact []byte
 
 //go:embed build/contracts/StakingPool.json
 var stakingPoolRawArtifact []byte
 
-//go:embed build/contracts/ChainConfig.json
-var chainConfigRawArtifact []byte
+//go:embed build/contracts/StakingConfig.json
+var stakingConfigRawArtifact []byte
 
 //go:embed build/contracts/SlashingIndicator.json
 var slashingIndicatorRawArtifact []byte
@@ -189,46 +165,176 @@ type consensusParams struct {
 	UndelegatePeriod         uint32                `json:"undelegatePeriod"`
 	MinValidatorStakeAmount  *math.HexOrDecimal256 `json:"minValidatorStakeAmount"`
 	MinStakingAmount         *math.HexOrDecimal256 `json:"minStakingAmount"`
+	FinalityRewardRatio      uint16                `json:"finalityRewardRatio"`
+}
+
+type supportedForks struct {
+	VerifyParliaBlock *math.HexOrDecimal256 `json:"verifyParliaBlock"`
+	BlockRewardsBlock *math.HexOrDecimal256 `json:"blockRewardsBlock"`
+	FastFinalityBlock *math.HexOrDecimal256 `json:"fastFinalityBlock"`
 }
 
 type genesisConfig struct {
-	ChainId  int64 `json:"chainId"`
-	Features struct {
-		RuntimeUpgradeBlock *math.HexOrDecimal256 `json:"runtimeUpgradeBlock"`
-	} `json:"features"`
+	ChainId         int64                     `json:"chainId"`
+	SupportedForks  supportedForks            `json:"supportedForks"`
 	Deployers       []common.Address          `json:"deployers"`
 	Validators      []common.Address          `json:"validators"`
+	VotingKeys      []hexutil.Bytes           `json:"votingKeys"`
+	Owners          []common.Address          `json:"owners"`
 	SystemTreasury  map[common.Address]uint16 `json:"systemTreasury"`
 	ConsensusParams consensusParams           `json:"consensusParams"`
 	VotingPeriod    int64                     `json:"votingPeriod"`
 	Faucet          map[common.Address]string `json:"faucet"`
 	CommissionRate  int64                     `json:"commissionRate"`
 	InitialStakes   map[common.Address]string `json:"initialStakes"`
+	BlockRewards    *math.HexOrDecimal256     `json:"blockRewards"`
 }
 
-func invokeConstructorOrPanic(genesis *core.Genesis, contract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, silent bool, balance *big.Int) {
-	ctor, err := newArguments(typeNames...).Pack(params...)
+func hexBytesToNormalBytes(value []hexutil.Bytes) (result [][]byte) {
+	for _, v := range value {
+		result = append(result, v)
+	}
+	return result
+}
+
+func traceCallError(deployedBytecode []byte) {
+	for _, c := range deployedBytecode[64:] {
+		if c >= 32 && c <= unicode.MaxASCII {
+			print(string(c))
+		}
+	}
+	println()
+}
+
+func byteCodeFromArtifact(rawArtifact []byte) []byte {
+	artifact := &artifactData{}
+	if err := json.Unmarshal(rawArtifact, artifact); err != nil {
+		panic(err)
+	}
+	return hexutil.MustDecode(artifact.Bytecode)
+}
+
+func mustNewType(t string) abi.Type {
+	typ, _ := abi.NewType(t, t, nil)
+	return typ
+}
+
+func createInitializer(typeNames []string, params []interface{}) []byte {
+	initializerArgs, err := newArguments(typeNames...).Pack(params...)
 	if err != nil {
 		panic(err)
 	}
-	sig := crypto.Keccak256([]byte(fmt.Sprintf("ctor(%s)", strings.Join(typeNames, ","))))[:4]
-	ctor = append(sig, ctor...)
-	ctor, err = newArguments("bytes").Pack(ctor)
+	initializerSig := crypto.Keccak256([]byte(fmt.Sprintf("initialize(%s)", strings.Join(typeNames, ","))))[:4]
+	return append(initializerSig, initializerArgs...)
+}
+
+func createSimpleBytecode(rawArtifact []byte) []byte {
+	constructorArgs, err := newArguments(
+		"address", "address", "address", "address", "address", "address", "address", "address").Pack(
+		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress)
 	if err != nil {
 		panic(err)
 	}
-	if !silent {
-		fmt.Printf(" + calling constructor: address=%s sig=%s ctor=%s\n", contract.Hex(), hexutil.Encode(sig), hexutil.Encode(ctor))
-	}
-	if err := simulateSystemContract(genesis, contract, rawArtifact, ctor, balance); err != nil {
-		panic(err)
-	}
+	return append(byteCodeFromArtifact(rawArtifact), constructorArgs...)
 }
 
-func createGenesisConfig(config genesisConfig, targetFile string) error {
+func createProxyBytecodeWithConstructor(rawArtifact []byte, initTypes []string, initArgs []interface{}) []byte {
+	constructorArgs, err := newArguments(
+		"address", "address", "address", "address", "address", "address", "address", "address").Pack(
+		stakingAddress, slashingIndicatorAddress, systemRewardAddress, stakingPoolAddress, governanceAddress, chainConfigAddress, runtimeUpgradeAddress, deployerProxyAddress)
+	if err != nil {
+		panic(err)
+	}
+	proxyArgs := abi.Arguments{
+		abi.Argument{Type: mustNewType("address")},
+		abi.Argument{Type: mustNewType("bytes")},
+		abi.Argument{Type: mustNewType("bytes")},
+	}
+	runtimeProxyConstructor, err := proxyArgs.Pack(
+		// address of runtime upgrade that can do future upgrades
+		runtimeUpgradeAddress,
+		// bytecode of the default implementation system smart contract
+		append(byteCodeFromArtifact(rawArtifact), constructorArgs...),
+		// initializer for system smart contract (it's called using "init()" function)
+		createInitializer(initTypes, initArgs),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return append(byteCodeFromArtifact(runtimeProxyArtifact), runtimeProxyConstructor...)
+}
+
+func createVirtualMachine(genesis *core.Genesis, systemContract common.Address, balance *big.Int) (*state.StateDB, *vm.EVM) {
+	statedb, _ := state.New(common.Hash{}, state.NewDatabaseWithConfig(rawdb.NewDatabase(memorydb.New()), &trie.Config{}), nil)
+	if balance != nil {
+		statedb.SetBalance(systemContract, balance)
+	}
+	block := genesis.ToBlock(nil)
+	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
+	txContext := core.NewEVMTxContext(
+		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
+	)
+	chainConfig := *genesis.Config
+	// make copy of chain config with disabled EIP-158 (for testing period)
+	//chainConfig.EIP158Block = nil
+	return statedb, vm.NewEVM(blockContext, txContext, statedb, &chainConfig, vm.Config{})
+}
+
+func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Address, rawArtifact []byte, typeNames []string, params []interface{}, balance *big.Int) {
+	if balance == nil {
+		balance = big.NewInt(0)
+	}
+	statedb, virtualMachine := createVirtualMachine(genesis, systemContract, balance)
+	var bytecode []byte
+	if systemContract == runtimeUpgradeAddress {
+		bytecode = createSimpleBytecode(rawArtifact)
+	} else {
+		bytecode = createProxyBytecodeWithConstructor(rawArtifact, typeNames, params)
+	}
+	result, _, err := virtualMachine.CreateWithAddress(common.Address{}, bytecode, 10_000_000, big.NewInt(0), systemContract)
+	if err != nil {
+		traceCallError(result)
+		panic(err)
+	}
+	if genesis.Alloc == nil {
+		genesis.Alloc = make(core.GenesisAlloc)
+	}
+	// constructor might have side effects so better to save all state changes
+	stateObjects := readStateObjectsFromState(statedb)
+	for addr, stateObject := range stateObjects {
+		storage := readDirtyStorageFromState(stateObject)
+		genesisAccount := core.GenesisAccount{
+			Code:    stateObject.Code(statedb.Database()),
+			Storage: storage.Copy(),
+			Balance: stateObject.Balance(),
+		}
+		genesis.Alloc[addr] = genesisAccount
+	}
+	if systemContract == stakingAddress {
+		res, _, err := virtualMachine.Call(vm.AccountRef(common.Address{}), stakingAddress, hexutil.MustDecode("0xfacd743b0000000000000000000000000000000000000000000000000000000000000000"), 10_000_000, big.NewInt(0))
+		if err != nil {
+			traceCallError(result)
+			panic(err)
+		}
+		println(hexutil.Encode(res))
+		res, _, err = virtualMachine.Call(vm.AccountRef(common.Address{}), stakingAddress, hexutil.MustDecode("0xd951e18600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), 10_000_000, big.NewInt(0))
+		if err != nil {
+			traceCallError(result)
+			panic(err)
+		}
+		println(hexutil.Encode(res))
+	}
+	// someone touches zero address and it increases nonce
+	delete(genesis.Alloc, common.Address{})
+}
+
+func createGenesisConfig(config genesisConfig, targetFile string) ([]byte, error) {
 	genesis := defaultGenesisConfig(config)
+	if len(config.Owners) == 0 {
+		config.Owners = config.Validators
+	}
 	// extra data
-	genesis.ExtraData = createExtraData(config.Validators)
+	genesis.ExtraData = createExtraData(config)
 	genesis.Config.Parlia.Epoch = uint64(config.ConsensusParams.EpochBlockInterval)
 	// execute system contracts
 	var initialStakes []*big.Int
@@ -236,22 +342,23 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	for _, v := range config.Validators {
 		rawInitialStake, ok := config.InitialStakes[v]
 		if !ok {
-			return fmt.Errorf("initial stake is not found for validator: %s", v.Hex())
+			return nil, fmt.Errorf("initial stake is not found for validator: %s", v.Hex())
 		}
 		initialStake, err := hexutil.DecodeBig(rawInitialStake)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		initialStakes = append(initialStakes, initialStake)
 		initialStakeTotal.Add(initialStakeTotal, initialStake)
 	}
-	silent := targetFile == "stdout"
-	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "uint256[]", "uint16"}, []interface{}{
+	invokeConstructorOrPanic(genesis, stakingAddress, stakingRawArtifact, []string{"address[]", "bytes[]", "address[]", "uint256[]", "uint16"}, []interface{}{
 		config.Validators,
+		hexBytesToNormalBytes(config.VotingKeys),
+		config.Owners,
 		initialStakes,
 		uint16(config.CommissionRate),
-	}, silent, initialStakeTotal)
-	invokeConstructorOrPanic(genesis, chainConfigAddress, chainConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256"}, []interface{}{
+	}, initialStakeTotal)
+	invokeConstructorOrPanic(genesis, chainConfigAddress, stakingConfigRawArtifact, []string{"uint32", "uint32", "uint32", "uint32", "uint32", "uint32", "uint256", "uint256", "uint16"}, []interface{}{
 		config.ConsensusParams.ActiveValidatorsLength,
 		config.ConsensusParams.EpochBlockInterval,
 		config.ConsensusParams.MisdemeanorThreshold,
@@ -260,9 +367,10 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 		config.ConsensusParams.UndelegatePeriod,
 		(*big.Int)(config.ConsensusParams.MinValidatorStakeAmount),
 		(*big.Int)(config.ConsensusParams.MinStakingAmount),
-	}, silent, nil)
-	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, silent, nil)
-	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, silent, nil)
+		config.ConsensusParams.FinalityRewardRatio,
+	}, nil)
+	invokeConstructorOrPanic(genesis, slashingIndicatorAddress, slashingIndicatorRawArtifact, []string{}, []interface{}{}, nil)
+	invokeConstructorOrPanic(genesis, stakingPoolAddress, stakingPoolRawArtifact, []string{}, []interface{}{}, nil)
 	var treasuryAddresses []common.Address
 	var treasuryShares []uint16
 	for k, v := range config.SystemTreasury {
@@ -271,29 +379,25 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	}
 	invokeConstructorOrPanic(genesis, systemRewardAddress, systemRewardRawArtifact, []string{"address[]", "uint16[]"}, []interface{}{
 		treasuryAddresses, treasuryShares,
-	}, silent, nil)
-	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256"}, []interface{}{
-		big.NewInt(config.VotingPeriod),
-	}, silent, nil)
+	}, nil)
+	invokeConstructorOrPanic(genesis, governanceAddress, governanceRawArtifact, []string{"uint256", "string"}, []interface{}{
+		big.NewInt(config.VotingPeriod), "Governance",
+	}, nil)
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
 		systemcontract.EvmHookRuntimeUpgradeAddress,
-	}, silent, nil)
+	}, nil)
 	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
-	}, silent, nil)
+	}, nil)
 	// create system contract
 	genesis.Alloc[intermediarySystemAddress] = core.GenesisAccount{
 		Balance: big.NewInt(0),
 	}
-	// set staking allocation
-	stakingAlloc := genesis.Alloc[stakingAddress]
-	stakingAlloc.Balance = initialStakeTotal
-	genesis.Alloc[stakingAddress] = stakingAlloc
 	// apply faucet
 	for key, value := range config.Faucet {
 		balance, ok := new(big.Int).SetString(value[2:], 16)
 		if !ok {
-			return fmt.Errorf("failed to parse number (%s)", value)
+			return nil, fmt.Errorf("failed to parse number (%s)", value)
 		}
 		genesis.Alloc[key] = core.GenesisAccount{
 			Balance: balance,
@@ -303,12 +407,19 @@ func createGenesisConfig(config genesisConfig, targetFile string) error {
 	newJson, _ := json.MarshalIndent(genesis, "", "  ")
 	if targetFile == "stdout" {
 		_, err := os.Stdout.Write(newJson)
-		return err
+		return newJson, err
 	} else if targetFile == "stderr" {
 		_, err := os.Stderr.Write(newJson)
-		return err
+		return newJson, err
 	}
-	return ioutil.WriteFile(targetFile, newJson, fs.ModePerm)
+	return newJson, ioutil.WriteFile(targetFile, newJson, fs.ModePerm)
+}
+
+func decimalToBigInt(value *math.HexOrDecimal256) *big.Int {
+	if value == nil {
+		return nil
+	}
+	return (*big.Int)(value)
 }
 
 func defaultGenesisConfig(config genesisConfig) *core.Genesis {
@@ -327,14 +438,17 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 		NielsBlock:          big.NewInt(0),
 		MirrorSyncBlock:     big.NewInt(0),
 		BrunoBlock:          big.NewInt(0),
+
+		// supported forks
+		VerifyParliaBlock: decimalToBigInt(config.SupportedForks.VerifyParliaBlock),
+		BlockRewardsBlock: decimalToBigInt(config.SupportedForks.BlockRewardsBlock),
+		FastFinalityBlock: decimalToBigInt(config.SupportedForks.FastFinalityBlock),
+
 		Parlia: &params.ParliaConfig{
 			Period: 3,
 			// epoch length is managed by consensus params
+			BlockRewards: decimalToBigInt(config.BlockRewards),
 		},
-	}
-	// by default runtime upgrades are disabled
-	if config.Features.RuntimeUpgradeBlock != nil {
-		chainConfig.RuntimeUpgradeBlock = (*big.Int)(config.Features.RuntimeUpgradeBlock)
 	}
 	return &core.Genesis{
 		Config:     chainConfig,
@@ -352,8 +466,15 @@ func defaultGenesisConfig(config genesisConfig) *core.Genesis {
 	}
 }
 
+var allSupportedForks = supportedForks{
+	VerifyParliaBlock: math.NewHexOrDecimal256(0),
+	BlockRewardsBlock: math.NewHexOrDecimal256(0),
+	FastFinalityBlock: math.NewHexOrDecimal256(0),
+}
+
 var localNetConfig = genesisConfig{
-	ChainId: 1337,
+	ChainId:        1337,
+	SupportedForks: allSupportedForks,
 	// who is able to deploy smart contract from genesis block
 	Deployers: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
@@ -361,6 +482,9 @@ var localNetConfig = genesisConfig{
 	// list of default validators
 	Validators: []common.Address{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"),
+	},
+	VotingKeys: []hexutil.Bytes{
+		hexutil.MustDecode("0x8b09f47df1cdb2d2a90b213726c46412059425a7034b3f0f22f611b8748113893a77220cbdf520057785512062a83541"),
 	},
 	SystemTreasury: map[common.Address]uint16{
 		common.HexToAddress("0x00a601f45688dba8a070722073b015277cf36725"): 10000,
@@ -389,7 +513,8 @@ var localNetConfig = genesisConfig{
 }
 
 var devNetConfig = genesisConfig{
-	ChainId: 14000,
+	ChainId:        14000,
+	SupportedForks: allSupportedForks,
 	// who is able to deploy smart contract from genesis block (it won't generate event log)
 	Deployers: []common.Address{},
 	// list of default validators (it won't generate event log)
@@ -399,6 +524,13 @@ var devNetConfig = genesisConfig{
 		common.HexToAddress("0xa6ff33e3250cc765052ac9d7f7dfebda183c4b9b"),
 		common.HexToAddress("0x49c0f7c8c11a4c80dc6449efe1010bb166818da8"),
 		common.HexToAddress("0x8e1ea6eaa09c3b40f4a51fcd056a031870a0549a"),
+	},
+	VotingKeys: []hexutil.Bytes{
+		hexutil.MustDecode("0xa580ce1923f1b132214c27c13b9fd8baffa528f7b5a181ed684efffc97c582a52a1b3e9f87da0692b2e16b4910a8ed3a"),
+		hexutil.MustDecode("0x85c6fdd085d732470b1af000ad353a0bcbf1b015fb39120c701ab1bc5c987f8fe3593e9be9b15d77bebf34d2f889e5cd"),
+		hexutil.MustDecode("0xa0584047ee0ca4d1c05246023238dc245402378ec0283ca6f1ed214d6afba8734915248da0d0c15e47930d1cdcb2f0be"),
+		hexutil.MustDecode("0xaccf6d8ab90d221cb737fa432f629d47e7aaee4ed857cff07d4fc58ecfeea07ac0e3143521ff26539eb45e74ce2f2242"),
+		hexutil.MustDecode("0x8c075c56f6a882184f47be046a7f5338f70a05965758ba0a980ea85baf4445799a1143f92cdf9f149c6a4a4c22607e4e"),
 	},
 	SystemTreasury: map[common.Address]uint16{
 		common.HexToAddress("0x0000000000000000000000000000000000000000"): 10000,
@@ -430,8 +562,71 @@ var devNetConfig = genesisConfig{
 	},
 }
 
+func returnError(writer http.ResponseWriter, err error) {
+	writer.WriteHeader(500)
+	_, _ = writer.Write([]byte(err.Error()))
+}
+
+func handleCorsRequest(w http.ResponseWriter, r *http.Request) bool {
+	var origin string
+	if origin = r.Header.Get("Origin"); origin == "" {
+		return false
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	if r.Method != "OPTIONS" || r.Header.Get("Access-Control-Request-Method") == "" {
+		return false
+	}
+	headers := []string{"Content-Type", "Accept"}
+	w.Header().Set("Access-Control-Allow-Headers", strings.Join(headers, ","))
+	methods := []string{"GET", "HEAD", "POST", "PUT", "DELETE"}
+	w.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ","))
+	return true
+}
+
+func httpRpcServer() {
+	r := mux.NewRouter()
+	r.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				returnError(writer, err.(error))
+				return
+			}
+		}()
+		if handleCorsRequest(writer, request) {
+			return
+		}
+		input, err := ioutil.ReadAll(request.Body)
+		if err != nil {
+			returnError(writer, err)
+			return
+		}
+		genesis := &genesisConfig{}
+		err = json.Unmarshal(input, genesis)
+		if err != nil {
+			returnError(writer, err)
+			return
+		}
+		result, err := createGenesisConfig(*genesis, "stdout")
+		if err != nil {
+			returnError(writer, err)
+			return
+		}
+		_, _ = writer.Write(result)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(200)
+	})
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		panic(err)
+	}
+}
+
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "--http" {
+		httpRpcServer()
+		return
+	}
 	if len(args) > 0 {
 		fileContents, err := os.ReadFile(args[0])
 		if err != nil {
@@ -446,18 +641,18 @@ func main() {
 		if len(args) > 1 {
 			outputFile = args[1]
 		}
-		err = createGenesisConfig(*genesis, outputFile)
+		_, err = createGenesisConfig(*genesis, outputFile)
 		if err != nil {
 			panic(err)
 		}
 		return
 	}
 	fmt.Printf("building local net\n")
-	if err := createGenesisConfig(localNetConfig, "localnet.json"); err != nil {
+	if _, err := createGenesisConfig(localNetConfig, "localnet.json"); err != nil {
 		panic(err)
 	}
 	fmt.Printf("\nbuilding dev net\n")
-	if err := createGenesisConfig(devNetConfig, "devnet.json"); err != nil {
+	if _, err := createGenesisConfig(devNetConfig, "devnet.json"); err != nil {
 		panic(err)
 	}
 	fmt.Printf("\n")

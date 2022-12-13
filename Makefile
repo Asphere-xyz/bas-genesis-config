@@ -12,7 +12,8 @@ compile:
 
 .PHONY: test
 test:
-	yarn coverage
+	yarn test:ganache ./test/parlia/*
+	yarn test:ganache ./test/relay-hub/*
 
 .PHONY: create-genesis
 create-genesis:
