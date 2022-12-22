@@ -56,7 +56,7 @@ contract Staking is InjectorContextHolder, IStaking {
     /**
      * Lets limit number of max validators by owner
      */
-    uint256 internal constant MAX_VALIDATORS_BY_OWNER = 100;
+    uint256 internal constant MAX_VALIDATORS_BY_OWNER = 256;
 
     // validator events
     event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
@@ -223,10 +223,10 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function getValidatorsByOwner(address owner) external view override returns (address[] memory) {
         // keep this for backward compatibility with legacy model
-        address validator = _validatorOwners[owner];
-        if (validator != address(0x00)) {
+        address legacyValidator = _validatorOwners[owner];
+        if (legacyValidator != address(0x00)) {
             address[] memory result = new address [](1);
-            result[0] = validator;
+            result[0] = legacyValidator;
             return result;
         }
         // return list of validators by owner
@@ -576,20 +576,11 @@ contract Staking is InjectorContextHolder, IStaking {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(_validatorsMap[validatorAddress].status == ValidatorStatus.NotFound, "already exist");
         validator.validatorAddress = validatorAddress;
-        validator.ownerAddress = validatorOwner;
         validator.status = status;
         validator.changedAt = sinceEpoch;
+        // set validator owner
+        _transferValidatorOwnership(validator, validatorOwner);
         _validatorsMap[validatorAddress] = validator;
-        // create index with validator set by owner
-        {
-            // if we have legacy validator by owner then do migration
-            address legacyValidatorByOwner = _validatorOwners[validatorOwner];
-            if (legacyValidatorByOwner != address(0x00)) {
-                _validatorsByOwner[validatorOwner].push(legacyValidatorByOwner);
-                delete _validatorOwners[validatorOwner];
-            }
-            _validatorsByOwner[validatorOwner].push(validatorAddress);
-        }
         // add new validator to array
         if (status == ValidatorStatus.Active) {
             _activeValidatorsList.push(validatorAddress);
@@ -668,13 +659,52 @@ contract Staking is InjectorContextHolder, IStaking {
         emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), commissionRate);
     }
 
+    function _transferValidatorOwnership(Validator memory validator, address newOwner) internal {
+        // there is no need to change owner if address is the same
+        address oldOwner = validator.ownerAddress;
+        if (oldOwner == newOwner) {
+            return;
+        }
+        // remove validator from existing owner
+        {
+            // if we have legacy validator by owner then do migration
+            address legacyValidator = _validatorOwners[oldOwner];
+            if (legacyValidator != address(0x00)) {
+                _validatorsByOwner[oldOwner].push(legacyValidator);
+                delete _validatorOwners[oldOwner];
+            }
+            // remove validator form old owner
+            address[] memory prevOwnerValidators = _validatorsByOwner[oldOwner];
+            for (uint256 i = 0; i < prevOwnerValidators.length; i++) {
+                if (prevOwnerValidators[i] != validator.validatorAddress) continue;
+                prevOwnerValidators[i] = prevOwnerValidators[prevOwnerValidators.length - 1];
+                delete prevOwnerValidators[prevOwnerValidators.length - 1];
+                assembly {
+                    mstore(prevOwnerValidators, sub(mload(prevOwnerValidators), 1))
+                }
+                break;
+            }
+        }
+        // add validator to new owner
+        {
+            // if we have legacy validator by owner then do migration
+            address legacyValidator = _validatorOwners[newOwner];
+            if (legacyValidator != address(0x00)) {
+                _validatorsByOwner[newOwner].push(legacyValidator);
+                delete _validatorOwners[newOwner];
+            }
+            // push new validator address
+            require(_validatorsByOwner[newOwner].length < MAX_VALIDATORS_BY_OWNER, "max validators per owner exceeded");
+            _validatorsByOwner[newOwner].push(validator.validatorAddress);
+        }
+        // save new validator owner
+        validator.ownerAddress = newOwner;
+    }
+
     function changeValidatorOwner(address validatorAddress, address newOwner) external override {
         Validator memory validator = _validatorsMap[validatorAddress];
         require(validator.ownerAddress == msg.sender, "only owner");
-        require(_validatorOwners[newOwner] == address(0x00), "owner in use");
-        delete _validatorOwners[validator.ownerAddress];
-        validator.ownerAddress = newOwner;
-        _validatorOwners[newOwner] = validatorAddress;
+        _transferValidatorOwnership(validator, newOwner);
         _validatorsMap[validatorAddress] = validator;
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
         emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);

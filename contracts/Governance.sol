@@ -85,9 +85,16 @@ contract Governance is InjectorContextHolder, GovernorCountingSimpleUpgradeable,
     }
 
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 weight, bytes memory params) internal virtual override(GovernorUpgradeable, GovernorCountingSimpleUpgradeable) {
-        // hmm, if we change
-        address validatorAddress = _STAKING_CONTRACT.getValidatorsByOwner(account);
-        return super._countVote(proposalId, validatorAddress, support, weight, params);
+        uint256 deadline = proposalDeadline(proposalId);
+        address[] memory validators = _STAKING_CONTRACT.getValidatorsByOwner(account);
+        uint256 votingPower = 0;
+        for (uint256 i = 0; i < validators.length; i++) {
+            address validatorAddress = validators[i];
+            uint256 validatorVotingPower = _validatorVotingPowerAt(validatorAddress, deadline);
+            super._countVote(proposalId, validatorAddress, support, validatorVotingPower, params);
+            votingPower += validatorVotingPower;
+        }
+        require(votingPower == weight, "corrupted weight");
     }
 
     function _validatorOwnerVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
