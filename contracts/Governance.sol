@@ -68,8 +68,7 @@ contract Governance is InjectorContextHolder, GovernorCountingSimpleUpgradeable,
     }
 
     modifier onlyValidatorOwner(address account) {
-        address validatorAddress = _STAKING_CONTRACT.getValidatorByOwner(account);
-        require(_STAKING_CONTRACT.isValidatorActive(validatorAddress), "only validator owner");
+        require(_validatorOwnerVotingPowerAt(account, block.number) > 0, "only owner with active validators");
         _;
     }
 
@@ -86,23 +85,27 @@ contract Governance is InjectorContextHolder, GovernorCountingSimpleUpgradeable,
     }
 
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 weight, bytes memory params) internal virtual override(GovernorUpgradeable, GovernorCountingSimpleUpgradeable) {
-        address validatorAddress = _STAKING_CONTRACT.getValidatorByOwner(account);
+        // hmm, if we change
+        address validatorAddress = _STAKING_CONTRACT.getValidatorsByOwner(account);
         return super._countVote(proposalId, validatorAddress, support, weight, params);
     }
 
     function _validatorOwnerVotingPowerAt(address validatorOwner, uint256 blockNumber) internal view returns (uint256) {
-        address validator = _STAKING_CONTRACT.getValidatorByOwner(validatorOwner);
-        return _validatorVotingPowerAt(validator, blockNumber);
+        address[] memory validators = _STAKING_CONTRACT.getValidatorsByOwner(validatorOwner);
+        uint256 votingPower = 0;
+        for (uint256 i = 0; i < validators.length; i++) {
+            votingPower += _validatorVotingPowerAt(validators[i], blockNumber);
+        }
+        return votingPower;
     }
 
     function _validatorVotingPowerAt(address validator, uint256 blockNumber) internal view returns (uint256) {
-        // only active validators power makes sense
-        if (!_STAKING_CONTRACT.isValidatorActive(validator)) {
-            return 0;
-        }
         // find validator votes at block number
         uint64 epoch = uint64(blockNumber / _CHAIN_CONFIG_CONTRACT.getEpochBlockInterval());
-        (,,uint256 totalDelegated,,,,,,) = _STAKING_CONTRACT.getValidatorStatusAtEpoch(validator, epoch);
+        (,uint8 status,uint256 totalDelegated,,,,,,) = _STAKING_CONTRACT.getValidatorStatusAtEpoch(validator, epoch);
+        if (status != 0x01) {
+            return 0;
+        }
         // use total delegated amount is a voting power
         return totalDelegated;
     }

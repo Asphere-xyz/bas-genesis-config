@@ -37,7 +37,7 @@ interface IStaking is IValidatorSet {
         uint96 totalRewards
     );
 
-    function getValidatorByOwner(address owner) external view returns (address);
+    function getValidatorsByOwner(address owner) external view returns (address[] memory);
 
     function registerValidator(address validator, uint16 commissionRate) payable external;
 

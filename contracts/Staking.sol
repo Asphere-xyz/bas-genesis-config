@@ -50,9 +50,13 @@ contract Staking is InjectorContextHolder, IStaking {
     uint64 internal constant TRANSFER_GAS_LIMIT = 30_000;
     /**
      * Some items are stored in the queues and we must iterate though them to
-     * execute one by one. Somtimes gas might not be enough for the tx execution.
+     * execute one by one. Sometimes gas might not be enough for the tx execution.
      */
     uint32 internal constant CLAIM_BEFORE_GAS = 100_000;
+    /**
+     * Lets limit number of max validators by owner
+     */
+    uint256 internal constant MAX_VALIDATORS_BY_OWNER = 100;
 
     // validator events
     event ValidatorAdded(address indexed validator, address owner, uint8 status, uint16 commissionRate);
@@ -114,6 +118,7 @@ contract Staking is InjectorContextHolder, IStaking {
     mapping(address => Validator) internal _validatorsMap;
     // mapping from validator owner to validator address
     mapping(address => address) internal _validatorOwners;
+    mapping(address => address[]) internal _validatorsByOwner;
     // list of all validators that are in validators mapping
     address[] internal _activeValidatorsList;
     // mapping with stakers to validators at epoch (validator -> delegator -> delegation)
@@ -216,8 +221,16 @@ contract Staking is InjectorContextHolder, IStaking {
         );
     }
 
-    function getValidatorByOwner(address owner) external view override returns (address) {
-        return _validatorOwners[owner];
+    function getValidatorsByOwner(address owner) external view override returns (address[] memory) {
+        // keep this for backward compatibility with legacy model
+        address validator = _validatorOwners[owner];
+        if (validator != address(0x00)) {
+            address[] memory result = new address [](1);
+            result[0] = validator;
+            return result;
+        }
+        // return list of validators by owner
+        return _validatorsByOwner[owner];
     }
 
     function releaseValidatorFromJail(address validatorAddress) external override {
@@ -450,7 +463,7 @@ contract Staking is InjectorContextHolder, IStaking {
 
     function _processUndelegateQueue(ValidatorDelegation storage delegation, uint64 beforeEpochExclude) internal returns (uint256 availableFunds) {
         uint64 undelegateGap = delegation.undelegateGap;
-        for (uint256 queueLength = delegation.undelegateQueue.length; undelegateGap < queueLength  && gasleft() > CLAIM_BEFORE_GAS;) {
+        for (uint256 queueLength = delegation.undelegateQueue.length; undelegateGap < queueLength && gasleft() > CLAIM_BEFORE_GAS;) {
             DelegationOpUndelegate memory undelegateOp = delegation.undelegateQueue[undelegateGap];
             if (undelegateOp.epoch > beforeEpochExclude) {
                 break;
@@ -567,9 +580,16 @@ contract Staking is InjectorContextHolder, IStaking {
         validator.status = status;
         validator.changedAt = sinceEpoch;
         _validatorsMap[validatorAddress] = validator;
-        // save validator owner
-        require(_validatorOwners[validatorOwner] == address(0x00), "owner in use");
-        _validatorOwners[validatorOwner] = validatorAddress;
+        // create index with validator set by owner
+        {
+            // if we have legacy validator by owner then do migration
+            address legacyValidatorByOwner = _validatorOwners[validatorOwner];
+            if (legacyValidatorByOwner != address(0x00)) {
+                _validatorsByOwner[validatorOwner].push(legacyValidatorByOwner);
+                delete _validatorOwners[validatorOwner];
+            }
+            _validatorsByOwner[validatorOwner].push(validatorAddress);
+        }
         // add new validator to array
         if (status == ValidatorStatus.Active) {
             _activeValidatorsList.push(validatorAddress);
@@ -578,7 +598,7 @@ contract Staking is InjectorContextHolder, IStaking {
         _validatorSnapshots[validatorAddress][sinceEpoch] = ValidatorSnapshot(0, uint112(initialStake / BALANCE_COMPACT_PRECISION), 0, commissionRate);
         // delegate initial stake to validator owner
         ValidatorDelegation storage delegation = _validatorDelegations[validatorAddress][validatorOwner];
-        require(delegation.delegateQueue.length == 0);
+        require(delegation.delegateQueue.length == 0, "dirty validator");
         delegation.delegateQueue.push(DelegationOpDelegate(uint112(initialStake / BALANCE_COMPACT_PRECISION), sinceEpoch));
         emit Delegated(validatorAddress, validatorOwner, initialStake, sinceEpoch);
         // emit event
