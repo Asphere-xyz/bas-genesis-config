@@ -70,6 +70,8 @@ contract Staking is InjectorContextHolder, IStaking {
     event Claimed(address indexed validator, address indexed staker, uint256 amount, uint64 epoch);
     event Redelegated(address indexed validator, address indexed staker, uint256 amount, uint256 dust, uint64 epoch);
 
+    event Debug(uint112 reminder, uint112 min, bool cond);
+
     enum ValidatorStatus {
         NotFound,
         Active,
@@ -350,9 +352,10 @@ contract Staking is InjectorContextHolder, IStaking {
         // + re-save validator because last affected epoch might change
         ValidatorSnapshot storage validatorSnapshot = _touchValidatorSnapshot(validator, beforeEpoch);
         require(validatorSnapshot.totalDelegated >= uint112(amount / BALANCE_COMPACT_PRECISION), "insufficient balance");
-        require(validatorSnapshot.totalDelegated - uint112(amount / BALANCE_COMPACT_PRECISION) >=
-            uint112(_CHAIN_CONFIG_CONTRACT.getMinStakingAmount() / BALANCE_COMPACT_PRECISION),
-            "unstake remainder is too low");
+        uint112 reminder = validatorSnapshot.totalDelegated - uint112(amount / BALANCE_COMPACT_PRECISION);
+        uint112 minAmount = uint112(_CHAIN_CONFIG_CONTRACT.getMinStakingAmount() / BALANCE_COMPACT_PRECISION);
+        emit Debug(reminder, minAmount, reminder == 0 || reminder >= minAmount);
+        require(reminder == 0 || reminder >= minAmount, "unstake remainder is too low");
         validatorSnapshot.totalDelegated -= uint112(amount / BALANCE_COMPACT_PRECISION);
         _validatorsMap[fromValidator] = validator;
         // if last pending delegate has the same next epoch then its safe to just decrease total
@@ -363,8 +366,7 @@ contract Staking is InjectorContextHolder, IStaking {
         DelegationOpDelegate storage recentDelegateOp = delegation.delegateQueue[delegation.delegateQueue.length - 1];
         require(recentDelegateOp.amount >= uint112(amount / BALANCE_COMPACT_PRECISION), "insufficient balance");
         uint112 nextDelegatedAmount = recentDelegateOp.amount - uint112(amount / BALANCE_COMPACT_PRECISION);
-        require(nextDelegatedAmount >= uint112(_CHAIN_CONFIG_CONTRACT.getMinStakingAmount() / BALANCE_COMPACT_PRECISION),
-            "unstake remainder is too low");
+        require(nextDelegatedAmount ==0 || nextDelegatedAmount >= minAmount, "unstake remainder is too low");
         if (recentDelegateOp.epoch >= beforeEpoch) {
             // decrease total delegated amount for the next epoch
             recentDelegateOp.amount = nextDelegatedAmount;
