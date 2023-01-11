@@ -12,7 +12,9 @@ const claimDelegatorFeeAndCheck = async (parlia, validator, staker, shouldBeAmou
   let validatorStakingFee = await parlia.getDelegatorFee(validator, staker)
   assert.equal(validatorStakingFee.toString(10), shouldBeAmount)
   let delegatorBalanceBefore = new BigNumber(await web3.eth.getBalance(staker));
-  let {logs, txCost} = await extractTxCost(await parlia.claimDelegatorFee(validator, {from: staker}));
+  // use manual gas setup for claim
+  let gas = await parlia.claimDelegatorFee.estimateGas(validator, {from: staker});
+  let {logs, txCost} = await extractTxCost(await parlia.claimDelegatorFee(validator, {gas: gas + 100_000, from: staker}));
   assert.equal(logs[0].event, 'Claimed')
   assert.equal(logs[0].args.amount, shouldBeAmount)
   let delegatorBalanceAfter = new BigNumber(await web3.eth.getBalance(staker));
