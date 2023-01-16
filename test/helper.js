@@ -190,6 +190,8 @@ const extractTxCost = async (executionResult) => {
   let {receipt: {gasUsed, effectiveGasPrice}} = executionResult;
   if (typeof effectiveGasPrice === 'string') {
     effectiveGasPrice = new BigNumber(effectiveGasPrice.substring(2), 16)
+  } else if (typeof effectiveGasPrice === 'number') {
+    effectiveGasPrice = new BigNumber(effectiveGasPrice)
   } else {
     effectiveGasPrice = new BigNumber(await web3.eth.getGasPrice(), 10)
   }
