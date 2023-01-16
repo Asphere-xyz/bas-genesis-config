@@ -25,7 +25,8 @@ const claimValidatorFeeAndCheck = async (parlia, validator, shouldBeAmount) => {
   let validatorStakingFee = await parlia.getValidatorFee(validator)
   assert.equal(validatorStakingFee.toString(10), shouldBeAmount)
   let validatorOwnerBalanceBefore = new BigNumber(await web3.eth.getBalance(validator));
-  let {txCost} = await extractTxCost(await parlia.claimValidatorFee(validator, {from: validator}))
+  let gas = await parlia.claimValidatorFee.estimateGas(validator, {from: validator});
+  let {txCost} = await extractTxCost(await parlia.claimValidatorFee(validator, {gas: gas + 100_000, from: validator}))
   let validatorOwnerBalanceAfter = new BigNumber(await web3.eth.getBalance(validator));
   assert.equal(validatorOwnerBalanceAfter.minus(validatorOwnerBalanceBefore).plus(txCost).toString(10), shouldBeAmount);
 }
