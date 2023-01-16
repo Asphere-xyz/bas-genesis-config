@@ -90,8 +90,8 @@ contract("Staking", async (accounts) => {
     assert.deepEqual(Array.from(await parlia.getValidators()), [validator2, validator1])
     assert.equal((await parlia.getValidatorStatus(validator1)).totalDelegated.toString(), '1000000000000000000')
     assert.equal((await parlia.getValidatorStatus(validator2)).totalDelegated.toString(), '2000000000000000000')
-    await expectError(parlia.undelegate(validator2, '1', {from: staker2}), 'too low');
-    await expectError(parlia.undelegate(validator2, '1000000000000000001', {from: staker2}), 'no remainder');
+    await expectError(parlia.undelegate(validator2, '1100000000000000000', {from: staker2}), 'too low');
+    await expectError(parlia.undelegate(validator2, '1000000000000000001', {from: staker2}), 'amount have a remainder');
     let res = await parlia.undelegate(validator2, '1000000000000000000', {from: staker2});
     assert.equal(res.logs[0].args.validator, validator2);
     assert.equal(res.logs[0].args.staker, staker2);
