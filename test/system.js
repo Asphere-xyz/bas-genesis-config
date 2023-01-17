@@ -47,11 +47,11 @@ contract("SystemReward", async (accounts) => {
     let distributionShares = await systemReward.getDistributionShares();
     assert.equal(distributionShares[0].account, treasury);
     assert.equal(distributionShares[0].share, '10000'); // 100%
-    await web3.eth.sendTransaction({from: owner, to: systemReward.address, value: '49000000000000000000'}); // 49 ether
+    await web3.eth.sendTransaction({from: owner, to: systemReward.address, value: '20000000000000000000'}); // 20 ether
     const res1 = await systemReward.claimSystemFee();
     assert.equal(res1.logs[0].event, 'FeeClaimed');
     assert.equal(res1.logs[0].args.account, treasury);
-    assert.equal(res1.logs[0].args.amount.toString(), '49000000000000000000');
+    assert.equal(res1.logs[0].args.amount.toString(), '20000000000000000000');
     // not lets change distribution scheme (50%,25%,25%)
     const res2 = await systemReward.updateDistributionShare([treasury, owner, governance], ['5000', '2500', '2500']);
     distributionShares = await systemReward.getDistributionShares();
@@ -70,17 +70,17 @@ contract("SystemReward", async (accounts) => {
     assert.equal(res2.logs[2].event, 'DistributionShareChanged');
     assert.equal(res2.logs[2].args.account, governance);
     assert.equal(res2.logs[2].args.share, '2500');
-    await web3.eth.sendTransaction({from: owner, to: systemReward.address, value: '49000000000000000000'}); // 49 ether
+    await web3.eth.sendTransaction({from: owner, to: systemReward.address, value: '20000000000000000000'}); // 20 ether
     const res3 = await systemReward.claimSystemFee();
     assert.equal(res3.logs[0].event, 'FeeClaimed');
     assert.equal(res3.logs[0].args.account, treasury);
-    assert.equal(res3.logs[0].args.amount.toString(), '24500000000000000000'); // 24.50 (50%)
+    assert.equal(res3.logs[0].args.amount.toString(), '10000000000000000000'); // 10 (50%)
     assert.equal(res3.logs[1].event, 'FeeClaimed');
     assert.equal(res3.logs[1].args.account, owner);
-    assert.equal(res3.logs[1].args.amount.toString(), '12250000000000000000'); // 12.25 (25%)
+    assert.equal(res3.logs[1].args.amount.toString(), '5000000000000000000'); // 5 (25%)
     assert.equal(res3.logs[2].event, 'FeeClaimed');
     assert.equal(res3.logs[2].args.account, governance);
-    assert.equal(res3.logs[2].args.amount.toString(), '12250000000000000000'); // 12.25 (25%)
+    assert.equal(res3.logs[2].args.amount.toString(), '5000000000000000000'); // 5 (25%)
   });
   it("system reward dust is well calculated", async () => {
     const {systemReward} = await newMockContract(owner, {
