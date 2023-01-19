@@ -1,0 +1,31 @@
+name: Truffle Tests
+
+on:
+  push:
+    branches: [ master, devel ]
+  pull_request:
+    branches: [ master, devel ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Setup NodeJS 16
+      uses: actions/setup-node@v2
+      with:
+        node-version: 16.x
+    - name: Show NodeJS version    
+      run: npm --version
+    
+    - name: Install Truffle
+      run: npm install truffle@latest -g 
+    
+    - name: Install Truffle Dependencies
+      run: npm install      
+    
+    - name: Run Truffle Tests  
+      run: truffle test

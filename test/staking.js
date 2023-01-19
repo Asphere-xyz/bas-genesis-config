@@ -12,7 +12,9 @@ const claimDelegatorFeeAndCheck = async (parlia, validator, staker, shouldBeAmou
   let validatorStakingFee = await parlia.getDelegatorFee(validator, staker)
   assert.equal(validatorStakingFee.toString(10), shouldBeAmount)
   let delegatorBalanceBefore = new BigNumber(await web3.eth.getBalance(staker));
-  let {logs, txCost} = await extractTxCost(await parlia.claimDelegatorFee(validator, {from: staker}));
+  // use manual gas setup for claim
+  let gas = await parlia.claimDelegatorFee.estimateGas(validator, {from: staker});
+  let {logs, txCost} = await extractTxCost(await parlia.claimDelegatorFee(validator, {gas: gas + 100_000, from: staker}));
   assert.equal(logs[0].event, 'Claimed')
   assert.equal(logs[0].args.amount, shouldBeAmount)
   let delegatorBalanceAfter = new BigNumber(await web3.eth.getBalance(staker));
@@ -23,7 +25,8 @@ const claimValidatorFeeAndCheck = async (parlia, validator, shouldBeAmount) => {
   let validatorStakingFee = await parlia.getValidatorFee(validator)
   assert.equal(validatorStakingFee.toString(10), shouldBeAmount)
   let validatorOwnerBalanceBefore = new BigNumber(await web3.eth.getBalance(validator));
-  let {txCost} = await extractTxCost(await parlia.claimValidatorFee(validator, {from: validator}))
+  let gas = await parlia.claimValidatorFee.estimateGas(validator, {from: validator});
+  let {txCost} = await extractTxCost(await parlia.claimValidatorFee(validator, {gas: gas + 100_000, from: validator}))
   let validatorOwnerBalanceAfter = new BigNumber(await web3.eth.getBalance(validator));
   assert.equal(validatorOwnerBalanceAfter.minus(validatorOwnerBalanceBefore).plus(txCost).toString(10), shouldBeAmount);
 }
@@ -88,8 +91,8 @@ contract("Staking", async (accounts) => {
     assert.deepEqual(Array.from(await parlia.getValidators()), [validator2, validator1])
     assert.equal((await parlia.getValidatorStatus(validator1)).totalDelegated.toString(), '1000000000000000000')
     assert.equal((await parlia.getValidatorStatus(validator2)).totalDelegated.toString(), '2000000000000000000')
-    await expectError(parlia.undelegate(validator2, '1', {from: staker2}), 'too low');
-    await expectError(parlia.undelegate(validator2, '1000000000000000001', {from: staker2}), 'no remainder');
+    await expectError(parlia.undelegate(validator2, '1100000000000000000', {from: staker2}), 'too low');
+    await expectError(parlia.undelegate(validator2, '1000000000000000001', {from: staker2}), 'amount have a remainder');
     let res = await parlia.undelegate(validator2, '1000000000000000000', {from: staker2});
     assert.equal(res.logs[0].args.validator, validator2);
     assert.equal(res.logs[0].args.staker, staker2);
@@ -272,7 +275,8 @@ contract("Staking", async (accounts) => {
     assert.equal(stakerFee.toString(10), '1107766700000000000');
     // let's claim staker fee
     let delegatorBalanceBefore = new BigNumber(await web3.eth.getBalance(staker1));
-    let {logs, txCost} = await extractTxCost(await parlia.claimDelegatorFee(validator1, {from: staker1}));
+    let gas = await parlia.claimDelegatorFee.estimateGas(validator1, {from: staker1});
+    let {logs, txCost} = await extractTxCost(await parlia.claimDelegatorFee(validator1, {gas: gas + 100_000, from: staker1}));
     assert.equal(logs[0].event, 'Claimed')
     assert.equal(logs[0].args.amount, '1107766700000000000')
     let delegatorBalanceAfter = new BigNumber(await web3.eth.getBalance(staker1));
@@ -284,7 +288,8 @@ contract("Staking", async (accounts) => {
     assert.equal(stakerFee.toString(10), '0');
     // let's claim validator fee
     let validatorOwnerBalanceBefore = new BigNumber(await web3.eth.getBalance(validator1));
-    ({txCost} = await extractTxCost(await parlia.claimValidatorFee(validator1, {from: validator1})));
+    gas = await parlia.claimValidatorFee.estimateGas(validator1, {from: validator1});
+    ({txCost} = await extractTxCost(await parlia.claimValidatorFee(validator1, {gas: gas + 100_000, from: validator1})));
     let validatorOwnerBalanceAfter = new BigNumber(await web3.eth.getBalance(validator1));
     assert.equal(validatorOwnerBalanceAfter.minus(validatorOwnerBalanceBefore).plus(txCost).toString(10), validatorFee.toString(10));
   })
