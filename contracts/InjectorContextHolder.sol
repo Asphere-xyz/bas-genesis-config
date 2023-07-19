@@ -10,7 +10,7 @@ import "./interfaces/IChainConfig.sol";
 import "./interfaces/IGovernance.sol";
 import "./interfaces/ISlashingIndicator.sol";
 import "./interfaces/ISystemReward.sol";
-import "./interfaces/IValidatorSet.sol";
+import "./interfaces/IStakingValidatorRegistry.sol";
 import "./interfaces/IStaking.sol";
 import "./interfaces/IRuntimeUpgrade.sol";
 import "./interfaces/IStakingPool.sol";
