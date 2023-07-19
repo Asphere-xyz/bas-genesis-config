@@ -7,8 +7,6 @@ interface IStakingValidatorRegistry is IStakingEvents {
 
     function getValidators() external view returns (address[] memory);
 
-    function deposit(address validator) external payable;
-
     function isValidatorActive(address validator) external view returns (bool);
 
     function isValidator(address validator) external view returns (bool);

@@ -8,6 +8,8 @@ interface IStakingRewardDistribution is IStakingEvents {
 
     function nextEpoch() external view returns (uint64);
 
+    function deposit(address validator) external payable;
+
     function getValidatorDelegation(address validator, address delegator) external view returns (
         uint256 delegatedAmount,
         uint64 atEpoch
