@@ -621,8 +621,8 @@ contract Staking is InjectorContextHolder, IStaking {
         require(_validatorsMap[validatorAddress].status == ValidatorStatus.Pending, "bad status");
         _activeValidatorsList.push(validatorAddress);
         validator.status = ValidatorStatus.Active;
-        _validatorsMap[validatorAddress] = validator;
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
+        _validatorsMap[validatorAddress] = validator;
         emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
@@ -631,8 +631,8 @@ contract Staking is InjectorContextHolder, IStaking {
         require(validator.status == ValidatorStatus.Active || validator.status == ValidatorStatus.Jail, "bad status");
         _removeValidatorFromActiveList(validatorAddress);
         validator.status = ValidatorStatus.Pending;
-        _validatorsMap[validatorAddress] = validator;
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
+        _validatorsMap[validatorAddress] = validator;
         emit ValidatorModified(validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
@@ -654,8 +654,8 @@ contract Staking is InjectorContextHolder, IStaking {
         delete _validatorOwners[validator.ownerAddress];
         validator.ownerAddress = newOwner;
         _validatorOwners[newOwner] = validatorAddress;
-        _validatorsMap[validatorAddress] = validator;
         ValidatorSnapshot storage snapshot = _touchValidatorSnapshot(validator, nextEpoch());
+        _validatorsMap[validatorAddress] = validator;
         emit ValidatorModified(validator.validatorAddress, validator.ownerAddress, uint8(validator.status), snapshot.commissionRate);
     }
 
