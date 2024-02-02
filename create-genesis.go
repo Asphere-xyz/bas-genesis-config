@@ -4,19 +4,18 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/common/systemcontract"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/gorilla/mux"
 	"io/fs"
 	"io/ioutil"
 	"math/big"
 	"net/http"
 	"os"
-	"reflect"
 	"strings"
 	"unicode"
-	"unsafe"
+
+	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/common/systemcontract"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/gorilla/mux"
 
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
 
@@ -56,32 +55,6 @@ func createExtraData(validators []common.Address) []byte {
 		copy(extra[32+20*i:], v.Bytes())
 	}
 	return extra
-}
-
-func readStateObjectsFromState(f *state.StateDB) map[common.Address]*state.StateObject {
-	var result map[common.Address]*state.StateObject
-	rs := reflect.ValueOf(*f)
-	rf := rs.FieldByName("stateObjects")
-	rs2 := reflect.New(rs.Type()).Elem()
-	rs2.Set(rs)
-	rf = rs2.FieldByName("stateObjects")
-	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
-	ri := reflect.ValueOf(&result).Elem()
-	ri.Set(rf)
-	return result
-}
-
-func readDirtyStorageFromState(f *state.StateObject) state.Storage {
-	var result map[common.Hash]common.Hash
-	rs := reflect.ValueOf(*f)
-	rf := rs.FieldByName("dirtyStorage")
-	rs2 := reflect.New(rs.Type()).Elem()
-	rs2.Set(rs)
-	rf = rs2.FieldByName("dirtyStorage")
-	rf = reflect.NewAt(rf.Type(), unsafe.Pointer(rf.UnsafeAddr())).Elem()
-	ri := reflect.ValueOf(&result).Elem()
-	ri.Set(rf)
-	return result
 }
 
 var stakingAddress = common.HexToAddress("0x0000000000000000000000000000000000001000")
@@ -232,10 +205,20 @@ func createVirtualMachine(genesis *core.Genesis, systemContract common.Address, 
 	if balance != nil {
 		statedb.SetBalance(systemContract, balance)
 	}
-	block := genesis.ToBlock(nil)
+	block := genesis.ToBlock()
 	blockContext := core.NewEVMBlockContext(block.Header(), &dummyChainContext{}, &common.Address{})
 	txContext := core.NewEVMTxContext(
-		types.NewMessage(common.Address{}, &systemContract, 0, big.NewInt(0), 10_000_000, big.NewInt(0), []byte{}, nil, false),
+		&core.Message{
+			From:              common.Address{},
+			To:                &systemContract,
+			Nonce:             0,
+			Value:             big.NewInt(0),
+			GasLimit:          10_000_000,
+			GasPrice:          big.NewInt(0),
+			Data:              []byte{},
+			AccessList:        nil,
+			SkipAccountChecks: true,
+		},
 	)
 	return statedb, vm.NewEVM(blockContext, txContext, statedb, genesis.Config, vm.Config{})
 }
@@ -251,7 +234,7 @@ func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Addre
 	} else {
 		bytecode = createProxyBytecodeWithConstructor(rawArtifact, typeNames, params)
 	}
-	result, _, err := virtualMachine.CreateWithAddress(vm.AccountRef(common.Address{}), bytecode, 10_000_000, big.NewInt(0), systemContract)
+	result, _, err := virtualMachine.CreateWithAddress(vm.AccountRef(common.Address{}).Address(), bytecode, 10_000_000, big.NewInt(0), systemContract)
 	if err != nil {
 		traceCallError(result)
 		panic(err)
@@ -260,11 +243,11 @@ func invokeConstructorOrPanic(genesis *core.Genesis, systemContract common.Addre
 		genesis.Alloc = make(core.GenesisAlloc)
 	}
 	// constructor might have side effects so better to save all state changes
-	stateObjects := readStateObjectsFromState(statedb)
+	stateObjects := statedb.GetStateObjects()
 	for addr, stateObject := range stateObjects {
-		storage := readDirtyStorageFromState(stateObject)
+		storage := stateObject.GetDirtyStorage()
 		genesisAccount := core.GenesisAccount{
-			Code:    stateObject.Code(statedb.Database()),
+			Code:    stateObject.Code(),
 			Storage: storage.Copy(),
 			Balance: stateObject.Balance(),
 		}
@@ -328,7 +311,7 @@ func createGenesisConfig(config genesisConfig, targetFile string) ([]byte, error
 		big.NewInt(config.VotingPeriod), "Governance",
 	}, nil)
 	invokeConstructorOrPanic(genesis, runtimeUpgradeAddress, runtimeUpgradeRawArtifact, []string{"address"}, []interface{}{
-		systemcontract.EvmHookRuntimeUpgradeAddress,
+		systemcontract.EvmHookRuntimeUpgradeContractAddress,
 	}, nil)
 	invokeConstructorOrPanic(genesis, deployerProxyAddress, deployerProxyRawArtifact, []string{"address[]"}, []interface{}{
 		config.Deployers,
